@@ -8,6 +8,7 @@ from tqdm import tqdm
 import random as r 
 import spinSimulations.cython_extensions as cext
 import pkg_resources
+import qutip
 
 
 class System():
@@ -224,6 +225,12 @@ class System():
         
         else:
             propergator = np.sum([self.operator(i) for i in detection_operators], axis=0)
+
+        # hamil_qutip = qutip.Qobj(inpt=hamiltonian)
+        # rho_qutip =  qutip.Qobj(inpt=self.rho)
+        # detection_qutip = qutip.Qobj(inpt=propergator)
+
+        # solved = qutip.mesolve(hamil_qutip, rho_qutip, time_array)
 
         for ti in time_array:
             rho_current = self.apply_hamiltonian(hamiltonian, ti, self.rho)
