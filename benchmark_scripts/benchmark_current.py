@@ -6,10 +6,10 @@ import numpy as np
 import random as r
 from timeit import default_timer as timer
 
-file_name = 'initial_start.dat'
+file_name = 'sparse_matricies.dat'
 
 lines = []
-for i in range(2,9):
+for i in range(2,10):
     start_time = timer()
     nspin = i
     atom_list = ['1H']*nspin
