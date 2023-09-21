@@ -1,14 +1,17 @@
-import matplotlib.pyplot as plt
+# this module 
+import spinSimulations.cython_extensions as cext
+
+#numerical modules
+import scipy 
+import scipy.sparse as sparse 
 import numpy as np 
+
+# additional functionality
 import re 
 import functools
-import scipy 
 import copy
-from tqdm import tqdm
-import random as r 
-import spinSimulations.cython_extensions as cext
 import pkg_resources
-import qutip
+
 
 
 class System():
@@ -218,25 +221,38 @@ class System():
     
     def calc_fid(self, hamiltonian, time_array, detection_operators='all'):
         
+        # do some setup
         fid = []
         if detection_operators == 'all':
             ops = [self.operator(f'{i}p') for i in range(self.nspins)]
-            propergator = np.sum(ops, axis=0) 
+            total_detection_operator = np.sum(ops, axis=0) 
         
         else:
-            propergator = np.sum([self.operator(i) for i in detection_operators], axis=0)
+            total_detection_operator = np.sum([self.operator(i) for i in detection_operators], axis=0)
 
-        # hamil_qutip = qutip.Qobj(inpt=hamiltonian)
-        # rho_qutip =  qutip.Qobj(inpt=self.rho)
-        # detection_qutip = qutip.Qobj(inpt=propergator)
+        # the domain we will calculate 
+        dtime = time_array[1] - time_array[0]
+        points = len(time_array)
 
-        # solved = qutip.mesolve(hamil_qutip, rho_qutip, time_array)
+        # set up the sparse matricies, could remove this part if we 
+        # move to only using sparse matricies, this would tidy things up generally
+        sparse_rho = sparse.csc_matrix(self.rho)
+        sparse_hamil = sparse.csc_matrix(hamiltonian)
+        sparse_detection_operator = sparse.csc_matrix(total_detection_operator)
 
-        for ti in time_array:
-            rho_current = self.apply_hamiltonian(hamiltonian, ti, self.rho)
-            fid_i = np.sum(rho_current * propergator.T)    
-            #fid_i = np.trace(np.matmul(rho_current, propergator))
+        # calculate the propergator
+        prop_part = sparse.linalg.expm(-1j*sparse_hamil*dtime)
+        prop_part_inv = sparse.linalg.inv(prop_part)
+
+        # main loop
+        for i in range(points):
+            # no evolution at time 0 
+            if i != 0:
+                sparse_rho = prop_part @ sparse_rho @ prop_part_inv
+
+            # get fid point
+            detetct = sparse_rho.multiply(sparse_detection_operator)
+            fid_i = detetct.sum()
             fid.append(fid_i)
-            
-        fid=np.array(fid)
+
         return time_array, fid
