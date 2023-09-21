@@ -37,12 +37,8 @@ def kron_all_v2(list array_list):
 
 def matrix_exp( np.ndarray[np.complex128_t, ndim=2] A):
     '''
-    This function calculates a matrix exponencial. In the simulation of the
-    relaxometry intensities this is the slowest step and should be optimised the 
-    most. The implimentation here should give the same results as scipy.lingalg.expm.
-
-    Currently this is done with numpy and Cython however I am open to other
-    alternatives.
+    This function calculates a matrix exponencial by diagonalising the matrix
+    and determining the eigenvalues and eigenvectors
 
     Parameters
     ----------
@@ -63,4 +59,4 @@ def matrix_exp( np.ndarray[np.complex128_t, ndim=2] A):
     diagonal_matrix = np.diag(np.exp(eigenvalues))
     intermediate = np.matmul(eigenvectors, diagonal_matrix)
     matrix_exp = np.matmul(intermediate, np.linalg.inv(eigenvectors))
-    return matrix_exp #scilinalg.expm(A) #
+    return matrix_exp
