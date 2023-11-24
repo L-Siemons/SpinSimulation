@@ -26,3 +26,10 @@ Currently in this module there is basic functionality for
 - constructing hamiltonians for chemical shifts and scalar couplings 
 - propergating free induction decays 
 
+## For Contributors
+
+Going forwards (currently not implimented yet for existing code) it would be good to 
+- format code to PEP8 with black 
+- check code with flake8 
+- write docstrings with the numpy doc style see: https://numpydoc.readthedocs.io/en/latest/format.html
+- I know scientists love one letter varriables but lets try to use descriptive names!
