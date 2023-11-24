@@ -5,6 +5,9 @@ This is a python module that is being developed to provide some functionality ne
 
 Part of this project also started as a way to explore fast and effient methods to do spin simulations so any ideas around this are welcome. 
 
+If you would like to see an example how to use this then please see
+SpinSimulation/examples/random_spectrum.py
+
 ## Install 
 
 This module requires the following modules: 
