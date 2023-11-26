@@ -1,3 +1,6 @@
+"""Contains the main class System which hold information and 
+opperations about the spin system
+"""
 # this module 
 import spinSimulations.cython_extensions as cext
 
@@ -15,9 +18,65 @@ import pkg_resources
 
 
 class System():
+
+    """Summary
+    
+    Attributes
+    ----------
+    atom_types : list
+        A list of atom types in the spin system. Each position is associated with an atom ID, 
+        ie the position in this list, which is used to identify each atom in the system. This list 
+        is also used to determine gyromagnetic ratio. All the available atom types are listed in
+        spinSimulations/dat/gammas.dat
+    carriers_hz : float
+        The carrier at a given moment in hertz (hz)
+    carriers_omega : float
+        The carrier at a given moment in angular frequency (w)
+    gammas : dict
+        contains the gyromagnetic rations listed in spinSimulations/dat/gammas.dat
+    gammas_file : str
+        path to the gyromagnetic ratios file
+    i00 : numpy.ndarray
+        Description
+    im0 : numpy.ndarray
+        Lowering operator in the raising/lowering basis for a sigle spin
+    ip0 : numpy.ndarray
+        Raising operator in the raising/lowering basis for a sigle spin
+    ix0 : numpy.ndarray
+        Ix operator in the cartesian basis for a sigle spin
+    iy0 : numpy.ndarray
+        Iy operator in the cartesian basis for a sigle spin
+    iz0 : numpy.ndarray
+        Iz operator in the cartesian basis for a sigle spin
+    lamour_freq : dict
+        This contains all the lamour frequencies at a given magnetic field (T)
+    lamour_freq_hz : dict
+        This contains all the lamour frequencies at a given magnetic field (T) in hz
+    nspins : int
+        number of spins in the system
+    operators : dict
+        This contains all the operators for the spin system that have been calculated so far
+    rho : numpy.ndarray
+        The density matrix of the system
+    single_spin_dictionary : dict
+        contains the operators for the single spins
+    small_identity : numpy.ndarray
+        A 2x2 identity matrix
+    """
+    
     def __init__(self, nspins, atom_types):
         '''
         Initial set up 
+        
+        Parameters
+        ----------
+        nspins : int
+            number of spins in the system
+        atom_types : list
+            A list of atom types in the spin system. Each position is associated with an atom ID, 
+            ie the position in this list, which is used to identify each atom in the system. This list 
+            is also used to determine gyromagnetic ratio. All the available atom types are listed in
+            spinSimulations/dat/gammas.dat
         '''
         self.ix0 = np.array([[0,1],[1,0]], dtype=np.cdouble) * 0.5 
         self.iy0 = np.array([[0,-1j],[1j,0]], dtype=np.cdouble) * 0.5
@@ -51,7 +110,8 @@ class System():
         self.atom_types = atom_types
 
     def load_gammas(self):
-
+        """Loads the gyromagnetic ratios
+        """
         self.gammas_file = pkg_resources.resource_filename('spinSimulations', 'dat/gammas.dat')
 
         self.gammas = {}
@@ -71,7 +131,13 @@ class System():
         #print(self.gammas)
 
     def set_lamour_freq(self, field):
+        """Sets the lamour frequencies
         
+        Parameters
+        ----------
+        field : float 
+            The field in Tesla
+        """
         # might need to load the gammas :) 
         if self.gammas == None:
             self.load_gammas()
@@ -92,7 +158,24 @@ class System():
 
     # the naming here is missleading. 
     def get_freq_shift(self, atom_id, ppm, absolute=False, freq='hz'):
-
+        """convers the chemical shift of an atom to the frequency in hz
+        
+        Parameters
+        ----------
+        atom_id : int
+            The atom ID is an int that goes from 0-len(System.atom_types)
+        ppm : float
+            chemical shift
+        absolute : bool, optional
+            If True it returns the abosolute frequency. If False it returns the frequency relative to the carrier
+        freq : str, optional
+            Takes the options 'hz' or  'omega' depending on which units are needed.
+        
+        Returns
+        -------
+        float
+            The frequency in hertz or angular frequencies depending on the value of freq
+        """
         atom_type = self.atom_types[atom_id]
 
         if freq == 'hz':
@@ -112,17 +195,77 @@ class System():
             return lamour_val + freq
 
     def get_shift_hz(self, atom_id, ppm, absolute=False):
+        """A wrapper for get_freq_shift that always gives the frequency in hertz
+        
+        Parameters
+        ----------
+
+        atom_id : int
+            The atom ID is an int that goes from 0-len(System.atom_types)
+        ppm : float
+            chemical shift
+        absolute : bool, optional
+            If True it returns the abosolute frequency. If False it returns the frequency relative to the carrier
+        
+        Returns
+        -------
+        float
+            The frequency in hertz
+        """
         return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq='hz')
 
     def get_shift_omega(self, atom_id, ppm, absolute=False):
+        """A wrapper for get_freq_shift that always gives the frequency in hertz
+        
+        Parameters
+        ----------
+
+        atom_id : int
+            The atom ID is an int that goes from 0-len(System.atom_types)
+        ppm : float
+            chemical shift
+        absolute : bool, optional
+            If True it returns the abosolute frequency. If False it returns the frequency relative to the carrier
+        
+        Returns
+        -------
+        float
+            The frequency in angular frequency
+        """
         return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq='omega')
 
     def kron_all(self, array_list):
+        """Applied the kroneker product to all arrays in array_list. This is used to make the 
+        operators in a multi spin system
+        
+        Parameters
+        ----------
+        array_list : list
+            list of 2d numpy.ndarray
+        
+        Returns
+        -------
+        numpy.ndarray
+            the resulting matrix of all the kroneker products
+        """
         return cext.kron_all_v2(array_list)
 
     def operator(self,name):
         '''
-        Get the operator, or generate it if we have not used it yet
+        Get the operator if is pressent in System.operators. Otherwise it is generated and added to the
+        dictionary. The operators follow the format N1aaN2bb where N1 and N2 are the atom inxdexes and 
+        xx and bb are the keys in System.single_spin_dictionary. For example the name for the I1zI2z operator 
+        would be '0z1z' and I1zI2x would be '0z1x'. 
+        
+        Parameters
+        ----------
+        name : str
+            The name of the operator
+        
+        Returns
+        -------
+        numpy.ndarray
+            The operator we asked for
         '''
 
         if name in self.operators:
@@ -148,10 +291,25 @@ class System():
             return self.operators[name]
         
     def print_rho(self,):
+         """Summary
+         """
          print(np.array_str(self.rho, precision=2, suppress_small=True))
             
     def calc_single_spin_rotation(self, phase, angle):
+        """calculates the rotation matrix for a single spin
         
+        Parameters
+        ----------
+        phase : str
+            Phase of the rotation. It can be 'x', 'y', 'z'
+        angle : float
+            The angle by which we want to to rotate the system
+        
+        Returns
+        -------
+        numpy.ndarray
+            the rotation matrix
+        """
         c = np.cos(angle/2)
         s = np.sin(angle/2)
         
@@ -165,7 +323,23 @@ class System():
             print('Phase for rotation is not recognised')
             
     def calc_rotation_mat(self, phase, angle, active='all'):
+        """Calculates the rotation matrix for the total system
         
+        Parameters
+        ----------
+        phase : str
+            Phase of the rotation. It can be 'x', 'y', 'z'
+        angle : float
+            The angle by which we want to to rotate the active spins
+        active : str, list
+            If 'all' the rotation matrix is applied to all atoms. If a list is given then 
+            the rotation is only applied to the atom_ids present in the list           
+        
+        Returns
+        -------
+        numpy.ndarray
+            The final roation matrix
+        """
         #this is the rotation matrix
         rotation = self.calc_single_spin_rotation(phase, angle)
         
@@ -186,25 +360,79 @@ class System():
             return self.kron_all(rotation_list)
     
     def apply_rotation(self, phase, angle, active='all'):
+        """Applies the rotation to the density matrix System.rho
+        
+        Parameters
+        ----------
+        phase : str
+            Phase of the rotation. It can be 'x', 'y', 'z'
+        angle : float
+            The angle by which we want to to rotate the active spins
+        active : str, list
+            If 'all' the rotation matrix is applied to all atoms. If a list is given then 
+            the rotation is only applied to the atom_ids present in the list       
+
+        """
         rotation = self.calc_rotation_mat(phase, angle, active=active)
         rotation_inv = np.linalg.inv(rotation)
         #print([rotation, self.rho, rotation_inv])
         self.rho = functools.reduce(np.matmul, [rotation, self.rho, rotation_inv])
     
     def apply_hamiltonian(self, hamiltonian, time, rho):
+        """Takes the hamiltonian and applies it to the density matrix rho
+        
+        Parameters
+        ----------
+        hamiltonian : numpy.ndarray
+            The hamiltonian you want to evolve
+        time : float
+            time in seconds
+        rho : numpy.ndarray
+            The density matrix
+        
+        Returns
+        -------
+        numpy.ndarray
+            The density matrix after evolving the system
+        """
         pre_operator = cext.matrix_exp(-1j*hamiltonian*time)
         post_operator = np.linalg.inv(pre_operator)
         #post_operator = scipy.linalg.expm(1j*hamiltonian*time)
         return functools.reduce(np.matmul, [pre_operator, rho, post_operator])
     
     def apply_hamiltonian_to_self(self, hamiltonian, time):
+        """Takes the hamiltonian and applies it to the density matrix System.rho
+        
+        Parameters
+        ----------
+        hamiltonian : numpy.ndarray
+            The hamiltonian you want to evolve
+        time : float
+            time in seconds
+        """
         self.rho = self.apply_hamiltonian(hamiltonian, time, self.rho)
 
     def get_trace(self,):
+        """Returns the trace of System.rho"""
         return np.trace(self.rho)
     
     def scalar_coupling_hamil(self, spin1, spin2, coupling):
-
+        """determines the scalar coupling hamiltonian for two spins 
+        
+        Parameters
+        ----------
+        spin1 : int
+            atom_id for first spin
+        spin2 : int
+            atom_id for second spin 
+        coupling : float
+            scalar coupling in hz
+        
+        Returns
+        -------
+        numpy.ndarray
+            the scalar coupling hamiltonian for the two spins
+        """
         # we don't need to consider strong coupling if we have different nuclei types
         # If you really wanted you could also add a check for the shift difference vs coupling too 
         if self.atom_types[spin1] == self.atom_types[spin2]:
@@ -220,7 +448,26 @@ class System():
         return total
     
     def calc_fid(self, hamiltonian, time_array, detection_operators='all'):
+        """calculates the free induction decay with a given hamiltonian. Currently 
+        in this implimentation it is assumed that the hamiltonian is time independant. 
         
+        Parameters
+        ----------
+        hamiltonian : numpy.ndarray
+            An array that has the hamiltonian with which you want to evolve the system
+        time_array : numpy.ndarray
+            an array with the time points you want to calculate the free induction decay over
+        detection_operators : str, list
+            If all the detection operator I+ is used for all the spins in the system. Otherwise
+            give a list of the individual operators you would like to sum togeter to detect with. 
+        
+        Returns
+        -------
+        time_array : numpy.ndarray
+            the time array used for the evolution
+        fid : numpy.ndarray
+            the free induction decay
+        """
         # do some setup
         fid = []
         if detection_operators == 'all':
