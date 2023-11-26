@@ -1,4 +1,7 @@
 # this module 
+import sys
+sys.path.append("/home/rai/Desktop/SpinSimulation/")
+
 import spinSimulations.cython_extensions as cext
 
 #numerical modules
