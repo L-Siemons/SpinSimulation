@@ -3,116 +3,69 @@ import sys
 sys.path.append("/home/rai/Desktop/SpinSimulation/")
 
 import spinSimulations.cython_extensions as cext
-
-#numerical modules
-import scipy 
-import scipy.sparse as sparse 
-import numpy as np 
-
-# additional functionality
-import re 
+import numpy as np
+import scipy.sparse as sparse
+from scipy.sparse import linalg
 import functools
-import copy
 import pkg_resources
+import re
 
 
 
 class System():
-    def __init__(self, nspins, atom_types):
-        '''
-        Initial set up 
-        '''
-        self.ix0 = np.array([[0,1],[1,0]], dtype=np.cdouble) * 0.5 
-        self.iy0 = np.array([[0,-1j],[1j,0]], dtype=np.cdouble) * 0.5
-        self.iz0 = np.array([[1,0],[0,-1]], dtype=np.cdouble) * 0.5 
-        
-        # raising and lowering opperators
-        self.ip0 = self.ix0 + 1j * self.iy0
-        self.im0 = self.ix0 - 1j * self.iy0
-        self.i00 = self.iz0 * np.sqrt(2)
-        
-        self.single_spin_dictionary = {}
-        self.single_spin_dictionary['x'] = self.ix0
-        self.single_spin_dictionary['y'] = self.iy0
-        self.single_spin_dictionary['z'] = self.iz0
-        
-        self.single_spin_dictionary['p'] = self.ip0
-        self.single_spin_dictionary['m'] = self.im0
-        self.single_spin_dictionary['o'] = self.i00
-        
-        self.small_identity = np.identity(2).astype(np.cdouble)
-        self.operators = {}
+       def __init__(self, nspins, atom_types):
         self.nspins = nspins
+        self.atom_types = atom_types
+        self.small_identity = np.identity(2, dtype=np.cdouble)
+        self.single_spin_dictionary = self._initialize_single_spin_dictionary()
+        self.operators = {}
         self.rho = None
-
         self.gammas = None
         self.carriers_hz = None
         self.carriers_omega = None
+        self.lamour_freq = None
+        self.lamour_freq_hz = None
 
-        assertion_message = 'There are different numbers of entries in nspins and atom_types'
-        assert nspins == len(atom_types), assertion_message
-        self.atom_types = atom_types
+    def _initialize_single_spin_dictionary(self):
+        ix0 = np.array([[0, 1], [1, 0]], dtype=np.cdouble) * 0.5
+        iy0 = np.array([[0, -1j], [1j, 0]], dtype=np.cdouble) * 0.5
+        iz0 = np.array([[1, 0], [0, -1]], dtype=np.cdouble) * 0.5
+
+        ip0 = ix0 + 1j * iy0
+        im0 = ix0 - 1j * iy0
+        i00 = iz0 * np.sqrt(2)
+
+        return {'x': ix0, 'y': iy0, 'z': iz0, 'p': ip0, 'm': im0, 'o': i00}
 
     def load_gammas(self):
-
-        self.gammas_file = pkg_resources.resource_filename('spinSimulations', 'dat/gammas.dat')
+        gammas_file = pkg_resources.resource_filename('spinSimulations', 'dat/gammas.dat')
 
         self.gammas = {}
-        f = open(self.gammas_file)
-        for line in f.readlines():
-            split = line.split()
-            check = True
-            if len(split) !=2:
-                check = False
-            if line[0] == '#':
-                check = False
-
-            if check == True:
-                self.gammas[split[0]] = float(split[1])
-
-        f.close()
-        #print(self.gammas)
+        with open(gammas_file) as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) == 2 and parts[0][0] != '#':
+                    self.gammas[parts[0]] = float(parts[1])
 
     def set_lamour_freq(self, field):
-        
-        # might need to load the gammas :) 
-        if self.gammas == None:
+        if self.gammas is None:
             self.load_gammas()
-        
-        # now we calculate all the carriers
-        self.lamour_freq = {}
-        self.lamour_freq_hz = {}
-        
-        for i in set(self.atom_types):
 
-            # check the atoms names exist
-            assertion_message = 'please ensure that the atom types are as in:\n {self.gammas_file}'
-            assert i in self.gammas, assertion_message
+        # Ensure that the atom types are in gammas
+        assertion_message = 'Please ensure that the atom types are as in:\n {self.gammas_file}'
+        for atom_type in set(self.atom_types):
+            assert atom_type in self.gammas, assertion_message
 
-            # get the frequencies
-            self.lamour_freq[i] = field * self.gammas[i]
-            self.lamour_freq_hz[i] =  self.lamour_freq[i]/(np.pi*2)
+        # get the frequencies 
+        self.lamour_freq = {i: field * self.gammas[i] for i in set(self.atom_types)}
+        self.lamour_freq_hz = {i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()}
 
-    # the naming here is missleading. 
+    
     def get_freq_shift(self, atom_id, ppm, absolute=False, freq='hz'):
-
         atom_type = self.atom_types[atom_id]
-
-        if freq == 'hz':
-            lamour_val = self.lamour_freq_hz[atom_type]
-        
-        elif freq == 'omega':
-            lamour_val = self.lamour_freq[atom_type]
-        
-        freq = lamour_val * ppm
-
-        # distance from the lamour frequency
-        if absolute == False:
-            return freq
-
-        #absolute frequency
-        if absolute == True:
-            return lamour_val + freq
+        lamour_val = self.lamour_freq_hz[atom_type] if freq == 'hz' else self.lamour_freq[atom_type]
+        shift = lamour_val * ppm  
+        return shift if not absolute else lamour_val + shift
 
     def get_shift_hz(self, atom_id, ppm, absolute=False):
         return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq='hz')
@@ -136,12 +89,9 @@ class System():
             operator_str = [re.findall(r'\D+|\d+', a) for a in operator_str]
             operator_str = np.array(operator_str, dtype=str).flatten()
             
-            new_shape = (len(operator_str)//2,2)
-            if new_shape[0] == 0:
-                new_shape[0] = 1
-            
+            new_shape = (len(operator_str) // 2, 2) if len(operator_str) != 2 else (1, 2)
             operator_str = np.reshape(operator_str, new_shape)
-            operator_list = [self.small_identity for i in range(self.nspins)]
+            operator_list = [self.small_identity for _ in range(self.nspins)]
 
             for i in operator_str:
                 counter = int(i[0])
@@ -155,9 +105,7 @@ class System():
             
     def calc_single_spin_rotation(self, phase, angle):
         
-        c = np.cos(angle/2)
-        s = np.sin(angle/2)
-        
+        c, S = np.cos(angle/2), np.sin(angle/2)
         if phase == 'x':
             return np.array([[c, -1j*s],[-1j*s, c]], dtype=np.cdouble)
         elif phase == 'y':
@@ -168,14 +116,10 @@ class System():
             print('Phase for rotation is not recognised')
             
     def calc_rotation_mat(self, phase, angle, active='all'):
-        
-        #this is the rotation matrix
         rotation = self.calc_single_spin_rotation(phase, angle)
         
-        #apply the rotation to all matricies
         if active == 'all':
             rotation_list = [rotation for _ in range(self.nspins)]
-            return self.kron_all(rotation_list)
         
         # apply the rotation to onle the active spins
         else:
@@ -186,7 +130,7 @@ class System():
                 rotation_list[i] = rotation
 
             expand_matrix = self.kron_all(rotation_list)
-            return self.kron_all(rotation_list)
+        return self.kron_all(rotation_list)
     
     def apply_rotation(self, phase, angle, active='all'):
         rotation = self.calc_rotation_mat(phase, angle, active=active)
@@ -195,7 +139,7 @@ class System():
         self.rho = functools.reduce(np.matmul, [rotation, self.rho, rotation_inv])
     
     def apply_hamiltonian(self, hamiltonian, time, rho):
-        pre_operator = cext.matrix_exp(-1j*hamiltonian*time)
+        pre_operator = cext.matrix_exp(-1j * hamiltonian * time)
         post_operator = np.linalg.inv(pre_operator)
         #post_operator = scipy.linalg.expm(1j*hamiltonian*time)
         return functools.reduce(np.matmul, [pre_operator, rho, post_operator])
