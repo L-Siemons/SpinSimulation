@@ -77,7 +77,7 @@ class System:
         """
         self.nspins = nspins
         self.atom_types = atom_types
-        self.small_identity = np.identity(2).astype(np.cdouble)
+        self.small_identity = np.identity(2, dtype=np.cdouble)
         self.single_spin_dictionary = self._initialize_single_spin_dictionary()
         self.operators = {}
         self.rho = None
@@ -109,13 +109,11 @@ class System:
                     self.gammas[parts[0]] = float(parts[1])
 
     def set_lamour_freq(self, field):
-        if self.gammas == None:
+        if self.gammas is None:
             self.load_gammas()
 
         # Ensure that the atom types are in gammas
-        assertion_message = (
-            "Please ensure that the atom types are as in:\n {self.gammas_file}"
-        )
+        assertion_message = 'Please ensure that the atom types are as in:\n {self.gammas_file}'
         for atom_type in set(self.atom_types):
             assert atom_type in self.gammas, assertion_message
 
@@ -293,9 +291,7 @@ class System:
         """
         self.rho = self.apply_hamiltonian(hamiltonian, time, self.rho)
 
-    def get_trace(
-        self,
-    ):
+    def get_trace(self,):
         """Returns the trace of System.rho"""
         return np.trace(self.rho)
 
