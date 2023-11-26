@@ -1,4 +1,5 @@
-
+"""Cython functions to try to speed things up
+"""
 import numpy as np 
 import math
 import cython
@@ -6,7 +7,8 @@ cimport numpy as np
 import scipy
 
 def kron_all_v2(list array_list):
-
+    '''Applies the kroneker product to a list of matricies
+    '''
     cdef int num_arrays = len(array_list)
     cdef np.ndarray[np.complex128_t, ndim=2] result = array_list[0]
 
