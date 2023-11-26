@@ -16,33 +16,68 @@ import re
 
 
 class System:
+        """Summary
+    
+    Attributes
+    ----------
+    atom_types : list
+        A list of atom types in the spin system. Each position is associated with an atom ID, 
+        ie the position in this list, which is used to identify each atom in the system. This list 
+        is also used to determine gyromagnetic ratio. All the available atom types are listed in
+        spinSimulations/dat/gammas.dat
+    carriers_hz : float
+        The carrier at a given moment in hertz (hz)
+    carriers_omega : float
+        The carrier at a given moment in angular frequency (w)
+    gammas : dict
+        contains the gyromagnetic rations listed in spinSimulations/dat/gammas.dat
+    gammas_file : str
+        path to the gyromagnetic ratios file
+    i00 : numpy.ndarray
+        Description
+    im0 : numpy.ndarray
+        Lowering operator in the raising/lowering basis for a sigle spin
+    ip0 : numpy.ndarray
+        Raising operator in the raising/lowering basis for a sigle spin
+    ix0 : numpy.ndarray
+        Ix operator in the cartesian basis for a sigle spin
+    iy0 : numpy.ndarray
+        Iy operator in the cartesian basis for a sigle spin
+    iz0 : numpy.ndarray
+        Iz operator in the cartesian basis for a sigle spin
+    lamour_freq : dict
+        This contains all the lamour frequencies at a given magnetic field (T)
+    lamour_freq_hz : dict
+        This contains all the lamour frequencies at a given magnetic field (T) in hz
+    nspins : int
+        number of spins in the system
+    operators : dict
+        This contains all the operators for the spin system that have been calculated so far
+    rho : numpy.ndarray
+        The density matrix of the system
+    single_spin_dictionary : dict
+        contains the operators for the single spins
+    small_identity : numpy.ndarray
+        A 2x2 identity matrix
+    """
+
     def __init__(self, nspins, atom_types):
         """
         Initial set up
+
+        Parameters
+        ----------
+        nspins : int
+            number of spins in the system
+        atom_types : list
+            A list of atom types in the spin system. Each position is associated with an atom ID, 
+            ie the position in this list, which is used to identify each atom in the system. This list 
+            is also used to determine gyromagnetic ratio. All the available atom types are listed in
+            spinSimulations/dat/gammas.dat
         """
-        self.ix0 = np.array([[0, 1], [1, 0]], dtype=np.cdouble) * 0.5
-        self.iy0 = np.array([[0, -1j], [1j, 0]], dtype=np.cdouble) * 0.5
-        self.iz0 = np.array([[1, 0], [0, -1]], dtype=np.cdouble) * 0.5
-
-        # raising and lowering opperators
-        self.ip0 = self.ix0 + 1j * self.iy0
-        self.im0 = self.ix0 - 1j * self.iy0
-        self.i00 = self.iz0 * np.sqrt(2)
-
-        self.single_spin_dictionary = {}
-        self.single_spin_dictionary["x"] = self.ix0
-        self.single_spin_dictionary["y"] = self.iy0
-        self.single_spin_dictionary["z"] = self.iz0
-
-        self.single_spin_dictionary["p"] = self.ip0
-        self.single_spin_dictionary["m"] = self.im0
-        self.single_spin_dictionary["o"] = self.i00
-
-        self.small_identity = np.identity(2).astype(np.cdouble)
-        self.operators = {}
         self.nspins = nspins
         self.atom_types = atom_types
-        self.small_identity = np.identity(2, dtype=np.cdouble)
+        self.small_identity = np.identity(2).astype(np.cdouble)
         self.single_spin_dictionary = self._initialize_single_spin_dictionary()
         self.operators = {}
         self.rho = None
@@ -64,9 +99,7 @@ class System:
         return {"x": ix0, "y": iy0, "z": iz0, "p": ip0, "m": im0, "o": i00}
 
     def load_gammas(self):
-        self.gammas_file = pkg_resources.resource_filename(
-            "spinSimulations", "dat/gammas.dat"
-        )
+        self.gammas_file = pkg_resources.resource_filename("spinSimulations", "dat/gammas.dat")
 
         self.gammas = {}
         with open(gammas_file) as f:
@@ -76,7 +109,6 @@ class System:
                     self.gammas[parts[0]] = float(parts[1])
 
     def set_lamour_freq(self, field):
-        # might need to load the gammas :)
         if self.gammas == None:
             self.load_gammas()
 
@@ -89,22 +121,17 @@ class System:
 
         # get the frequencies
         self.lamour_freq = {i: field * self.gammas[i] for i in set(self.atom_types)}
-        self.lamour_freq_hz = {
-            i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()
-        }
+        self.lamour_freq_hz = {i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()}
 
     def get_freq_shift(self, atom_id, ppm, absolute=False, freq="hz"):
+        
         atom_type = self.atom_types[atom_id]
-        lamour_val = (
-            self.lamour_freq_hz[atom_type]
-            if freq == "hz"
-            else self.lamour_freq[atom_type]
-        )
+        lamour_val = (self.lamour_freq_hz[atom_type] if freq == "hz" else self.lamour_freq[atom_type])
         shift = lamour_val * ppm
         return shift if not absolute else lamour_val + shift
 
     def get_shift_hz(self, atom_id, ppm, absolute=False):
-        """A wrapper for get_freq_shift that always gives the frequency in hertz
+    """A wrapper for get_freq_shift that always gives the frequency in hertz
 
         Parameters
         ----------
@@ -125,7 +152,7 @@ class System:
 
     def get_shift_omega(self, atom_id, ppm, absolute=False):
         """A wrapper for get_freq_shift that always gives the frequency in hertz
-
+        
         Parameters
         ----------
 
@@ -135,7 +162,7 @@ class System:
             chemical shift
         absolute : bool, optional
             If True it returns the abosolute frequency. If False it returns the frequency relative to the carrier
-
+        
         Returns
         -------
         float
@@ -185,9 +212,7 @@ class System:
             operator_str = [re.findall(r"\D+|\d+", a) for a in operator_str]
             operator_str = np.array(operator_str, dtype=str).flatten()
 
-            new_shape = (
-                (len(operator_str) // 2, 2) if len(operator_str) != 2 else (1, 2)
-            )
+            new_shape = (len(operator_str) // 2, 2) if len(operator_str) != 2 else (1, 2)
             operator_str = np.reshape(operator_str, new_shape)
             operator_list = [self.small_identity for _ in range(self.nspins)]
 
@@ -198,16 +223,12 @@ class System:
             self.operators[name] = self.kron_all(operator_list)
             return self.operators[name]
 
-    def print_rho(
-        self,
-    ):
+    def print_rho(self,):
         """Summary"""
         print(np.array_str(self.rho, precision=2, suppress_small=True))
 
     def calc_single_spin_rotation(self, phase, angle):
-        c = np.cos(angle / 2)
-        s = np.sin(angle / 2)
-
+        c, s = np.cos(angle / 2),  np.sin(angle / 2)
         if phase == "x":
             return np.array([[c, -1j * s], [-1j * s, c]], dtype=np.cdouble)
         elif phase == "y":
