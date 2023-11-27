@@ -1,3 +1,7 @@
+import sys
+
+sys.path.append("/home/rai/Desktop/SpinSimulation")
+
 import spinSimulations.spin as s
 import spinSimulations.utils_spectra as spec_utils
 import importlib
