@@ -10,7 +10,7 @@ def get_axis(number_of_points, dtime):
 	number_of_points : int
 	    number of points in the spectrum
 	dtime : float
-	    time incriment between points
+	    time increment between points
 	
 	Returns
 	-------
@@ -20,7 +20,7 @@ def get_axis(number_of_points, dtime):
 	return np.fft.fftfreq(number_of_points, d=dtime)
 
 def organise_1d(fid, number_of_points, dtime):
-	"""Gets the frequency axis for a spectrum, does the fourier transform in 1D and also 
+	"""Gets the frequency axis for a spectrum, does the Fourier transform in 1D and also 
 	applies the fft shift. 
 	
 	Parameters
@@ -30,7 +30,7 @@ def organise_1d(fid, number_of_points, dtime):
 	number_of_points : int
 	    number of points in the spectrum
 	dtime : float
-	    time incriment between points
+	    time increment between points
 	
 	Returns
 	-------

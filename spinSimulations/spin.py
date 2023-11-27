@@ -35,19 +35,19 @@ class System:
     i00 : numpy.ndarray
         Description
     im0 : numpy.ndarray
-        Lowering operator in the raising/lowering basis for a sigle spin
+        Lowering operator in the raising/lowering basis for a single spin
     ip0 : numpy.ndarray
-        Raising operator in the raising/lowering basis for a sigle spin
+        Raising operator in the raising/lowering basis for a single spin
     ix0 : numpy.ndarray
-        Ix operator in the cartesian basis for a sigle spin
+        Ix operator in the Cartesian basis for a single spin
     iy0 : numpy.ndarray
-        Iy operator in the cartesian basis for a sigle spin
+        Iy operator in the Cartesian basis for a single spin
     iz0 : numpy.ndarray
-        Iz operator in the cartesian basis for a sigle spin
+        Iz operator in the Cartesian basis for a single spin
     lamour_freq : dict
-        This contains all the lamour frequencies at a given magnetic field (T)
+        This contains all the Lamour frequencies at a given magnetic field (T)
     lamour_freq_hz : dict
-        This contains all the lamour frequencies at a given magnetic field (T) in hz
+        This contains all the Lamour frequencies at a given magnetic field (T) in hz
     nspins : int
         number of spins in the system
     operators : dict
@@ -88,6 +88,9 @@ class System:
         self.lamour_freq_hz = None
 
     def _initialize_single_spin_dictionary(self):
+        '''
+        Initialise the dictionary with the single spin operators
+        '''
         ix0 = np.array([[0, 1], [1, 0]], dtype=np.cdouble) * 0.5
         iy0 = np.array([[0, -1j], [1j, 0]], dtype=np.cdouble) * 0.5
         iz0 = np.array([[1, 0], [0, -1]], dtype=np.cdouble) * 0.5
@@ -99,6 +102,9 @@ class System:
         return {"x": ix0, "y": iy0, "z": iz0, "p": ip0, "m": im0, "o": i00}
 
     def load_gammas(self):
+        '''
+        load the gyromagnetic ratios
+        '''
         gammas_file = pkg_resources.resource_filename(
             "spinSimulations", "dat/gammas.dat"
         )
@@ -168,7 +174,7 @@ class System:
         ppm : float
             chemical shift
         absolute : bool, optional
-            If True it returns the abosolute frequency. If False it returns the frequency relative to the carrier
+            If True it returns the absolute frequency. If False it returns the frequency relative to the carrier
 
         Returns
         -------
@@ -178,7 +184,7 @@ class System:
         return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq="omega")
 
     def kron_all(self, array_list):
-        """Applied the kroneker product to all arrays in array_list. This is used to make the
+        """Applied the kronecker product to all arrays in array_list. This is used to make the
         operators in a multi spin system
 
         Parameters
@@ -189,13 +195,13 @@ class System:
         Returns
         -------
         numpy.ndarray
-            the resulting matrix of all the kroneker products
+            the resulting matrix of all the kronecker products
         """
         return cext.kron_all_v2(array_list)
 
     def operator(self, name):
         """
-        Get the operator if is pressent in System.operators. Otherwise it is generated and added to the
+        Get the operator if is present in System.operators. Otherwise it is generated and added to the
         dictionary. The operators follow the format N1aaN2bb where N1 and N2 are the atom inxdexes and
         xx and bb are the keys in System.single_spin_dictionary. For example the name for the I1zI2z operator
         would be '0z1z' and I1zI2x would be '0z1x'.
@@ -293,12 +299,12 @@ class System:
         return functools.reduce(np.matmul, [pre_operator, rho, post_operator])
 
     def apply_hamiltonian_to_self(self, hamiltonian, time):
-        """Takes the hamiltonian and applies it to the density matrix System.rho
+        """Takes the Hamiltonian and applies it to the density matrix System.rho
 
         Parameters
         ----------
         hamiltonian : numpy.ndarray
-            The hamiltonian you want to evolve
+            The Hamiltonian you want to evolve
         time : float
             time in seconds
         """
@@ -311,7 +317,7 @@ class System:
         return np.trace(self.rho)
 
     def scalar_coupling_hamil(self, spin1, spin2, coupling):
-        """determines the scalar coupling hamiltonian for two spins
+        """determines the scalar coupling Hamiltonian for two spins
 
         Parameters
         ----------
@@ -325,7 +331,7 @@ class System:
         Returns
         -------
         numpy.ndarray
-            the scalar coupling hamiltonian for the two spins
+            the scalar coupling Hamiltonian for the two spins
         """
         # we don't need to consider strong coupling if we have different nuclei types
         # If you really wanted you could also add a check for the shift difference vs coupling too
@@ -342,18 +348,18 @@ class System:
         return total
 
     def calc_fid(self, hamiltonian, time_array, detection_operators="all"):
-        """calculates the free induction decay with a given hamiltonian. Currently
-        in this implimentation it is assumed that the hamiltonian is time independant.
+        """calculates the free induction decay with a given Hamiltonian. Currently
+        in this implementation it is assumed that the Hamiltonian is time independent.
 
         Parameters
         ----------
         hamiltonian : numpy.ndarray
-            An array that has the hamiltonian with which you want to evolve the system
+            An array that has the Hamiltonian with which you want to evolve the system
         time_array : numpy.ndarray
             an array with the time points you want to calculate the free induction decay over
         detection_operators : str, list
             If all the detection operator I+ is used for all the spins in the system. Otherwise
-            give a list of the individual operators you would like to sum togeter to detect with.
+            give a list of the individual operators you would like to sum together to detect with.
 
         Returns
         -------
