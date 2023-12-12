@@ -34,3 +34,6 @@ Going forwards (currently not implimented yet for existing code) it would be goo
 - write docstrings with the numpy doc style see: https://numpydoc.readthedocs.io/en/latest/format.html
 - I know scientists love one letter varriables but lets try to use descriptive names!
 - If you would like make a contribution please open a branch, make the changes you would like and open a pull request
+
+# Regarding editors / IDEs
+We have configurations for VSC and .editorconfig available. Feel free to add your own!

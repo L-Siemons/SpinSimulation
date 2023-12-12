@@ -1,9 +1,6 @@
 """Contains the main class System which hold information and 
 opperations about the spin system
 """
-import sys
-
-sys.path.append("/home/rai/Desktop/SpinSimulation/")
 
 import spinSimulations.cython_extensions as cext
 import numpy as np
@@ -88,9 +85,9 @@ class System:
         self.lamour_freq_hz = None
 
     def _initialize_single_spin_dictionary(self):
-        '''
+        """
         Initialise the dictionary with the single spin operators
-        '''
+        """
         ix0 = np.array([[0, 1], [1, 0]], dtype=np.cdouble) * 0.5
         iy0 = np.array([[0, -1j], [1j, 0]], dtype=np.cdouble) * 0.5
         iz0 = np.array([[1, 0], [0, -1]], dtype=np.cdouble) * 0.5
@@ -102,9 +99,9 @@ class System:
         return {"x": ix0, "y": iy0, "z": iz0, "p": ip0, "m": im0, "o": i00}
 
     def load_gammas(self):
-        '''
+        """
         load the gyromagnetic ratios
-        '''
+        """
         gammas_file = pkg_resources.resource_filename(
             "spinSimulations", "dat/gammas.dat"
         )
