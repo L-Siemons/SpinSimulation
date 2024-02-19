@@ -25,7 +25,7 @@ dtime = time_array[1]-time_array[0]
 system = s.System(nspin,  atom_list)
 
 # define the initial operators, here all spins are on Z
-start = np.sum([system.operator(f'{i}z') for i in range(nspin)], axis=0)
+start = np.sum([system.op_full(f'{i}z') for i in range(nspin)], axis=0)
 
 #set rho
 system.rho = start 
@@ -47,7 +47,7 @@ for i in range(nspin):
     curr_shift_ppm = r.uniform(-0.1, 1)*1e-6
     curr_shift_hz = system.get_freq_shift(i, curr_shift_ppm)
     chemical_freqs.append(curr_shift_hz)
-    chemical_freqs_hamils.append(np.pi*2*curr_shift_hz*system.operator(f'{i}z'))
+    chemical_freqs_hamils.append(np.pi*2*curr_shift_hz*system.op_full(f'{i}z'))
 
 
 # couplings

@@ -196,7 +196,7 @@ class System:
         """
         return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq="omega")
 
-    def operator(self, name):
+    def op_full(self, name):
         """
         Get the operator if is present in System.operators. Otherwise it is generated and added to the
         dictionary. The operators follow the format N1aaN2bb where N1 and N2 are the atom inxdexes and
@@ -213,32 +213,24 @@ class System:
         numpy.ndarray
             The operator we asked for
         """
-
-        if name in self.operators:
-            return self.operators[name]
-
-        else:
-            operator_str = name.split(".")
-            operator_str = [re.findall(r"\D+|\d+", a) for a in operator_str]
-            operator_str = np.array(operator_str, dtype=str).flatten()
-
-            new_shape = (
-                (len(operator_str) // 2, 2) if len(operator_str) != 2 else (1, 2)
-            )
-            operator_str = np.reshape(operator_str, new_shape)
-            operator_list = [self.small_identity for _ in range(self.n_spins)]
-
-            
-
-            for i in operator_str:
-                counter = int(i[0])
-                operator_list[counter] = self.single_spin_dictionary[i[1]]
-            
-            res = 1
-            for op in operator_list:
-                res = self.kron(res, op)
-                
-            return res
+        
+        idx = list(map(int, name[::2]))
+        idx_to_label = dict(
+            zip(idx, name[1::2])
+        )
+        
+        res = 1
+        for i in range(self.n_spins):
+            if i in idx:
+                label = idx_to_label[i]
+                res = self.kron(
+                    res, 
+                    self.single_spin_dictionary[label]
+                )
+            else:
+                res = self.kron(res, self.small_identity)
+                    
+        return res
         
         
     def op(self, idx, label="z"):
@@ -249,7 +241,7 @@ class System:
             idx : int 
                 Spin index (! In python, count from zero)
             label :str 
-                operator type, "x", "y", "z", "+", "-".
+                operator type, "x", "y", "z", "p", "m".
 
         Returns
         -------
@@ -272,7 +264,7 @@ class System:
 
         Args:
             idx (int): Spin index (! In python, count from zero)
-            label (str): operator type, "x", "y", "z", "+", "-".
+            label (str): operator type, "x", "y", "z", "p", "m".
 
         Returns:
             ndarray: spin operator
@@ -408,8 +400,8 @@ class System:
         else:
             axis = ["z"]
 
-        i_operators = [self.operator(f"{spin1}{i}") for i in axis]
-        s_operators = [self.operator(f"{spin2}{i}") for i in axis]
+        i_operators = [self.op_full(f"{spin1}{i}") for i in axis]
+        s_operators = [self.op_full(f"{spin2}{i}") for i in axis]
 
         operator_products = 0
         for i, j in zip(i_operators, s_operators):
@@ -445,12 +437,12 @@ class System:
         if detection_operators == "all":
             ops = 0
             for i in range(self.n_spins):
-                ops += self.operator(f"{i}p")
+                ops += self.op_full(f"{i}p")
 
         else:
             ops = 0
             for i in detection_operators:
-                ops += self.operator(i)
+                ops += self.op_full(i)
             
 
         # the domain we will calculate
