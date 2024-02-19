@@ -2,10 +2,10 @@
 opperations about the spin system
 """
 
-import spinSimulations.cython_extensions as cext
+#import spinSimulations.cython_extensions as cext
 import numpy as np
-import scipy.sparse as sparse
-from scipy.sparse import linalg
+import scipy as sp
+import scipy.sparse as sps
 import functools
 import pkg_resources
 import re
@@ -45,7 +45,7 @@ class System:
         This contains all the Lamour frequencies at a given magnetic field (T)
     lamour_freq_hz : dict
         This contains all the Lamour frequencies at a given magnetic field (T) in hz
-    nspins : int
+    n_spins : int
         number of spins in the system
     operators : dict
         This contains all the operators for the spin system that have been calculated so far
@@ -58,13 +58,13 @@ class System:
 
     """
 
-    def __init__(self, nspins, atom_types):
+    def __init__(self, n_spins, atom_types, dtype=np.cdouble, is_sparse=False):
         """
         Initial set up
 
         Parameters
         ----------
-        nspins : int
+        n_spins : int
             number of spins in the system
         atom_types : list
             A list of atom types in the spin system. Each position is associated with an atom ID,
@@ -72,10 +72,9 @@ class System:
             is also used to determine the gyromagnetic ratio. All the available atom types are listed in
             spinSimulations/dat/gammas.dat
         """
-        self.nspins = nspins
+        self.n_spins = n_spins
         self.atom_types = atom_types
         self.small_identity = np.identity(2, dtype=np.cdouble)
-        self.single_spin_dictionary = self._initialize_single_spin_dictionary()
         self.operators = {}
         self.rho = None
         self.gammas = None
@@ -83,14 +82,31 @@ class System:
         self.carriers_omega = None
         self.lamour_freq = None
         self.lamour_freq_hz = None
+        self.dtype = dtype
+        self.single_spin_dictionary = self._initialize_single_spin_dictionary()
+        self.set_sparse(is_sparse)
 
+    def set_sparse(self, is_sparse=True):
+        self.is_sparse = is_sparse
+        self._set_matrix_operations()
+        
+    def _set_matrix_operations(self):
+        if self.is_sparse:
+            self.kron = sps.kron
+            self.matmul = sparse_dot
+            self.expm = sps.linalg.expm
+        else:
+            self.kron = np.kron
+            self.matmul = np.matmul
+            self.expm = sp.linalg.expm
+            
     def _initialize_single_spin_dictionary(self):
         """
         Initialise the dictionary with the single spin operators
         """
-        ix0 = np.array([[0, 1], [1, 0]], dtype=np.cdouble) * 0.5
-        iy0 = np.array([[0, -1j], [1j, 0]], dtype=np.cdouble) * 0.5
-        iz0 = np.array([[1, 0], [0, -1]], dtype=np.cdouble) * 0.5
+        ix0 = np.array([[0, 1], [1, 0]], dtype=self.dtype) * 0.5
+        iy0 = np.array([[0, -1j], [1j, 0]], dtype=self.dtype) * 0.5
+        iz0 = np.array([[1, 0], [0, -1]], dtype=self.dtype) * 0.5
 
         ip0 = ix0 + 1j * iy0
         im0 = ix0 - 1j * iy0
@@ -180,22 +196,6 @@ class System:
         """
         return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq="omega")
 
-    def kron_all(self, array_list):
-        """Applied the kronecker product to all arrays in array_list. This is used to make the
-        operators in a multi spin system
-
-        Parameters
-        ----------
-        array_list : list
-            list of 2d numpy.ndarray
-
-        Returns
-        -------
-        numpy.ndarray
-            the resulting matrix of all the kronecker products
-        """
-        return cext.kron_all_v2(array_list)
-
     def operator(self, name):
         """
         Get the operator if is present in System.operators. Otherwise it is generated and added to the
@@ -226,15 +226,80 @@ class System:
                 (len(operator_str) // 2, 2) if len(operator_str) != 2 else (1, 2)
             )
             operator_str = np.reshape(operator_str, new_shape)
-            operator_list = [self.small_identity for _ in range(self.nspins)]
+            operator_list = [self.small_identity for _ in range(self.n_spins)]
+
+            
 
             for i in operator_str:
                 counter = int(i[0])
                 operator_list[counter] = self.single_spin_dictionary[i[1]]
+            
+            res = 1
+            for op in operator_list:
+                res = self.kron(res, op)
+                
+            return res
+        
+        
+    def op(self, idx, label="z"):
+        """Return the operator for a spin system
 
-            self.operators[name] = self.kron_all(operator_list)
-            return self.operators[name]
+        Parameters
+        ----------
+            idx : int 
+                Spin index (! In python, count from zero)
+            label :str 
+                operator type, "x", "y", "z", "+", "-".
 
+        Returns
+        -------
+        numpy.ndarray
+            spin operator
+        """
+        
+        # List of idx brunch
+        if type(idx) == list:
+            res = 0
+            for id in idx:
+                res += self._op(id, label=label)
+            return res
+        
+        # idx as an int brunch
+        return self._op(idx=idx, label=label)
+    
+    def _op(self, idx, label="z"):
+        """Return the operator for a spin system
+
+        Args:
+            idx (int): Spin index (! In python, count from zero)
+            label (str): operator type, "x", "y", "z", "+", "-".
+
+        Returns:
+            ndarray: spin operator
+        """
+        
+        # handling incorrect input
+        self._index_check(idx)
+        
+        res_op = 1  # this is a trick to write pretier code
+        
+        for i in range(self.n_spins):
+                
+            if i != idx:
+                # TODO: change for spin not only 1/2
+                res_op = self.kron(res_op, np.eye(2, dtype=self.dtype))
+            else:
+                res_op = self.kron(res_op, self.single_spin_dictionary[label], dtype=self.dtype)    
+        
+        return res_op
+
+    def _index_check(self, idx):
+        if idx < 0:
+            raise Exception("Index for a spin operator cannot be negative")
+        
+        if idx >= self.n_spins:
+            raise Exception("Index for a spin operator is out of range")
+        
     def print_rho(
         self,
     ):
@@ -257,18 +322,20 @@ class System:
         rotation = self.calc_single_spin_rotation(phase, angle)
 
         if active == "all":
-            rotation_list = [rotation for _ in range(self.nspins)]
+            res = 1
+            for _ in range(self.n_spins):
+                res = self.kron(res, rotation)
 
         # apply the rotation to onle the active spins
         else:
-            rotation_list = [self.small_identity for i in range(self.nspins)]
-            for i in active:
-                i = int(i)
-                # i = i-1
-                rotation_list[i] = rotation
-
-            expand_matrix = self.kron_all(rotation_list)
-        return self.kron_all(rotation_list)
+            res = 1
+            for i in range(self.n_spins):
+                if i in active:
+                    res = self.kron(res, rotation)
+                else:
+                    res = self.kron(res, self.small_identity)
+                
+        return res
 
     def apply_rotation(self, phase, angle, active="all"):
         """Applies the rotation to the density matrix System.rho
@@ -285,15 +352,19 @@ class System:
 
         """
         rotation = self.calc_rotation_mat(phase, angle, active=active)
-        rotation_inv = np.linalg.inv(rotation)
-        # print([rotation, self.rho, rotation_inv])
-        self.rho = functools.reduce(np.matmul, [rotation, self.rho, rotation_inv])
+        rotation_inv = rotation.conj().T
+        self.rho = functools.reduce(
+            self.matmul,
+            [rotation, self.rho, rotation_inv]
+        )
 
     def apply_hamiltonian(self, hamiltonian, time, rho):
-        pre_operator = cext.matrix_exp(-1j * hamiltonian * time)
-        post_operator = np.linalg.inv(pre_operator)
-        # post_operator = scipy.linalg.expm(1j*hamiltonian*time)
-        return functools.reduce(np.matmul, [pre_operator, rho, post_operator])
+        pre_operator = self.expm(-1j * hamiltonian * time)
+        post_operator = pre_operator.conj().T
+        return functools.reduce(
+            self.matmul, 
+            [pre_operator, rho, post_operator]
+        )
 
     def apply_hamiltonian_to_self(self, hamiltonian, time):
         """Takes the Hamiltonian and applies it to the density matrix System.rho
@@ -340,8 +411,12 @@ class System:
         i_operators = [self.operator(f"{spin1}{i}") for i in axis]
         s_operators = [self.operator(f"{spin2}{i}") for i in axis]
 
-        operator_products = [np.matmul(i, j) for i, j in zip(i_operators, s_operators)]
-        total = coupling * np.sum(operator_products, axis=0) * 2 * np.pi
+        operator_products = 0
+        for i, j in zip(i_operators, s_operators):
+            operator_products += self.matmul(i, j)
+        
+        total = coupling * operator_products * 2 * np.pi
+        
         return total
 
     def calc_fid(self, hamiltonian, time_array, detection_operators="all"):
@@ -368,13 +443,15 @@ class System:
         # do some setup
         fid = []
         if detection_operators == "all":
-            ops = [self.operator(f"{i}p") for i in range(self.nspins)]
-            total_detection_operator = np.sum(ops, axis=0)
+            ops = 0
+            for i in range(self.n_spins):
+                ops += self.operator(f"{i}p")
 
         else:
-            total_detection_operator = np.sum(
-                [self.operator(i) for i in detection_operators], axis=0
-            )
+            ops = 0
+            for i in detection_operators:
+                ops += self.operator(i)
+            
 
         # the domain we will calculate
         dtime = time_array[1] - time_array[0]
@@ -382,13 +459,13 @@ class System:
 
         # set up the sparse matricies, could remove this part if we
         # move to only using sparse matricies, this would tidy things up generally
-        sparse_rho = sparse.csc_matrix(self.rho)
-        sparse_hamil = sparse.csc_matrix(hamiltonian)
-        sparse_detection_operator = sparse.csc_matrix(total_detection_operator)
+        sparse_rho = sps.csc_matrix(self.rho)
+        sparse_hamil = sps.csc_matrix(hamiltonian)
+        sparse_detection_operator = sps.csc_matrix(ops)
 
         # calculate the propergator
-        prop_part = sparse.linalg.expm(-1j * sparse_hamil * dtime)
-        prop_part_inv = sparse.linalg.inv(prop_part)
+        prop_part = sps.linalg.expm(-1j * sparse_hamil * dtime)
+        prop_part_inv = sps.linalg.inv(prop_part)
 
         # main loop
         for i in range(points):
@@ -402,3 +479,17 @@ class System:
             fid.append(fid_i)
 
         return time_array, fid
+
+def sparse_dot(A, B):
+    """This is a helper function to provide two arguments multiplication function for sparse matrices
+
+    Parameters
+    ----------
+    A : scipy sparse matrix
+    B : scipy sparse matrix
+
+    Returns
+    -------
+    scipy sparse matrix
+    """
+    return A.dot(B)

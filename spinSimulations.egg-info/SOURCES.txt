@@ -1,0 +1,10 @@
+setup.py
+spinSimulations/__init__.py
+spinSimulations/spin.py
+spinSimulations/utils_spectra.py
+spinSimulations.egg-info/PKG-INFO
+spinSimulations.egg-info/SOURCES.txt
+spinSimulations.egg-info/dependency_links.txt
+spinSimulations.egg-info/not-zip-safe
+spinSimulations.egg-info/top_level.txt
+spinSimulations/dat/gammas.dat
