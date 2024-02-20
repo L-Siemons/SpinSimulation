@@ -90,6 +90,50 @@ class System:
         self.is_sparse = is_sparse
         self._set_matrix_operations()
         
+    def _proj_values(self, S):
+        """
+        Return all projections for a spin S in descending order
+        Helper function to build 
+
+        Parameters
+        ----------
+
+        S : int or float
+            Spin value
+
+        Returns
+        -------
+        numpy.ndarray
+            Projections for a spin S in descending order
+        """
+        n_proj = int(2*S + 1)
+        return np.array([
+            S - m 
+            for m in range(n_proj)
+        ], dtype=self.dtype)
+    
+    def _ladder_values(self, S):
+        """
+        Return all values on \pm 1 diagonal of a ladder operators
+        Helper function to build the ladder operators
+
+        Parameters
+        ----------
+
+        S : int or float
+            Spin value
+
+        Returns
+        -------
+        numpy.ndarray
+            Return all values on \pm 1 diagonal of a ladder operators
+        """
+        n_proj = int(2*S + 1)
+        return np.array([
+            np.sqrt(S*(S+1) - (m - S) * (m - S + 1))
+            for m in range(n_proj - 1)
+        ], dtype=self.dtype)
+    
     def _set_matrix_operations(self):
         if self.is_sparse:
             self.kron = sps.kron
