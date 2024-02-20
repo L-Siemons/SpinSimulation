@@ -10,7 +10,7 @@ from timeit import default_timer as timer
 start_time = timer()
 
 # set the number of spins, for nspin>6 it will take time ...
-nspin = 8
+nspin = 5
 # set the spin types, here all proton
 atom_list = ['1H']*nspin
 

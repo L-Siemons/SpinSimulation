@@ -2,13 +2,11 @@
 opperations about the spin system
 """
 
-#import spinSimulations.cython_extensions as cext
 import numpy as np
 import scipy as sp
 import scipy.sparse as sps
 import functools
 import pkg_resources
-import re
 
 
 class System:
@@ -16,7 +14,7 @@ class System:
 
         Attributes
     ----------
-    atom_types : list
+    nulcei_list : list
         A list of atom types in the spin system. Each position is associated with an atom ID,
         ie the position in this list, which is used to identify each atom in the system. This list
         is also used to determine gyromagnetic ratio. All the available atom types are listed in
@@ -58,7 +56,7 @@ class System:
 
     """
 
-    def __init__(self, n_spins, atom_types, dtype=np.cdouble, is_sparse=False):
+    def __init__(self, n_spins, nulcei_list, dtype=np.cdouble, is_sparse=False):
         """
         Initial set up
 
@@ -66,14 +64,14 @@ class System:
         ----------
         n_spins : int
             number of spins in the system
-        atom_types : list
+        nulcei_list : list
             A list of atom types in the spin system. Each position is associated with an atom ID,
             i.e., the position in this list, which is used to identify each atom in the system. This list
             is also used to determine the gyromagnetic ratio. All the available atom types are listed in
             spinSimulations/dat/gammas.dat
         """
         self.n_spins = n_spins
-        self.atom_types = atom_types
+        self.nulcei_list = nulcei_list
         self.small_identity = np.identity(2, dtype=np.cdouble)
         self.operators = {}
         self.rho = None
@@ -144,6 +142,37 @@ class System:
             self.matmul = np.matmul
             self.expm = sp.linalg.expm
             
+    # TODO: this function should cash its results or it should put results in the dict
+    def op_single(self, S, label='z'):
+        if label == 'z':
+            if self.is_sparse:
+                return sps.spdiags([self._proj_values(S)], dtype=self.dtype)
+            else:
+                return np.diag(self._proj_values(S), dtype=self.dtype)
+                
+        if label == 'p':
+            if self.is_sparse:
+                values = self._ladder_values(S)
+                m = n = len(values) + 1
+                return sps.diags(values, offsets=1, shape=(m, n), dtype=self.dtype)
+            else:
+                return np.diag(self._ladder_values(S), k=1, dtype=self.dtype)
+        
+        if label == 'm':
+            if self.is_sparse:
+                values = self._ladder_values(S)
+                m = n = len(values) + 1
+                return sps.spdiags(values, offsets=-1, shape=(m, n), dtype=self.dtype)
+            else:
+                return np.diag(self._ladder_values(S), k=-1, dtype=self.dtype)
+            
+        if label == 'x':
+            return 0.5 * (self.op_single(S, 'p') + self.op_single(S, 'm'))
+            
+        if label == 'y':
+            return -0.5 * 1j * (self.op_single(S, 'p') - self.op_single(S, 'm'))
+                
+            
     def _initialize_single_spin_dictionary(self):
         """
         Initialise the dictionary with the single spin operators
@@ -181,17 +210,17 @@ class System:
         assertion_message = (
             "Please ensure that the atom types are as in:\n {self.gammas_file}"
         )
-        for atom_type in set(self.atom_types):
+        for atom_type in set(self.nulcei_list):
             assert atom_type in self.gammas, assertion_message
 
         # get the frequencies
-        self.lamour_freq = {i: field * self.gammas[i] for i in set(self.atom_types)}
+        self.lamour_freq = {i: field * self.gammas[i] for i in set(self.nulcei_list)}
         self.lamour_freq_hz = {
             i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()
         }
 
     def get_freq_shift(self, atom_id, ppm, absolute=False, freq="hz"):
-        atom_type = self.atom_types[atom_id]
+        atom_type = self.nulcei_list[atom_id]
         lamour_val = (
             self.lamour_freq_hz[atom_type]
             if freq == "hz"
@@ -207,7 +236,7 @@ class System:
         ----------
 
         atom_id : int
-            The atom ID is an int that goes from 0 to len(System.atom_types)
+            The atom ID is an int that goes from 0 to len(System.nulcei_list)
         ppm : float
             chemical shift
         absolute : bool, optional
@@ -227,7 +256,7 @@ class System:
         ----------
 
         atom_id : int
-            The atom ID is an int that goes from 0-len(System.atom_types)
+            The atom ID is an int that goes from 0-len(System.nulcei_list)
         ppm : float
             chemical shift
         absolute : bool, optional
@@ -439,7 +468,7 @@ class System:
         """
         # we don't need to consider strong coupling if we have different nuclei types
         # If you really wanted you could also add a check for the shift difference vs coupling too
-        if self.atom_types[spin1] == self.atom_types[spin2]:
+        if self.nulcei_list[spin1] == self.nulcei_list[spin2]:
             axis = ["x", "y", "z"]
         else:
             axis = ["z"]
