@@ -58,7 +58,7 @@ class System:
 
     """
 
-    def __init__(self, n_spins, nuclei_list, dtype=np.cdouble, is_sparse=True):
+    def __init__(self, n_spins, nuclei_list=None, dtype=np.cdouble, is_sparse=True):
         """
         Initial set up
 
@@ -88,7 +88,6 @@ class System:
         self.lamour_freq = None
         self.lamour_freq_hz = None
         self.dtype = dtype
-        self.single_spin_dictionary = self._initialize_single_spin_dictionary()
         self.set_sparse(is_sparse)
 
     def set_sparse(self, is_sparse=True):
@@ -180,21 +179,6 @@ class System:
             
         if label == 'y':
             return -0.5 * 1j * (self.op_single(S, 'p') - self.op_single(S, 'm'))
-                
-            
-    def _initialize_single_spin_dictionary(self):
-        """
-        Initialise the dictionary with the single spin operators
-        """
-        ix0 = np.array([[0, 1], [1, 0]], dtype=self.dtype) * 0.5
-        iy0 = np.array([[0, -1j], [1j, 0]], dtype=self.dtype) * 0.5
-        iz0 = np.array([[1, 0], [0, -1]], dtype=self.dtype) * 0.5
-
-        ip0 = ix0 + 1j * iy0
-        im0 = ix0 - 1j * iy0
-        i00 = iz0 * np.sqrt(2)
-
-        return {"x": ix0, "y": iy0, "z": iz0, "p": ip0, "m": im0, "o": i00}
 
     def load_gammas(self):
         """
