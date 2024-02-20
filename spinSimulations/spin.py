@@ -8,13 +8,15 @@ import scipy.sparse as sps
 import functools
 import pkg_resources
 
+import spindata as sd
+
 
 class System:
     """Summary
 
         Attributes
     ----------
-    nulcei_list : list
+    nuclei_list : list
         A list of atom types in the spin system. Each position is associated with an atom ID,
         ie the position in this list, which is used to identify each atom in the system. This list
         is also used to determine gyromagnetic ratio. All the available atom types are listed in
@@ -56,7 +58,7 @@ class System:
 
     """
 
-    def __init__(self, n_spins, nulcei_list, dtype=np.cdouble, is_sparse=False):
+    def __init__(self, n_spins, nuclei_list, dtype=np.cdouble, is_sparse=True):
         """
         Initial set up
 
@@ -64,14 +66,19 @@ class System:
         ----------
         n_spins : int
             number of spins in the system
-        nulcei_list : list
+        nuclei_list : list
             A list of atom types in the spin system. Each position is associated with an atom ID,
             i.e., the position in this list, which is used to identify each atom in the system. This list
             is also used to determine the gyromagnetic ratio. All the available atom types are listed in
             spinSimulations/dat/gammas.dat
         """
         self.n_spins = n_spins
-        self.nulcei_list = nulcei_list
+        
+        if nuclei_list is None:
+            self.nuclei_list = ["1H"] * n_spins
+        else:
+            self.nuclei_list = nuclei_list
+        
         self.small_identity = np.identity(2, dtype=np.cdouble)
         self.operators = {}
         self.rho = None
@@ -137,18 +144,20 @@ class System:
             self.kron = sps.kron
             self.matmul = sparse_dot
             self.expm = sps.linalg.expm
+            self.eye = sps.eye
         else:
             self.kron = np.kron
             self.matmul = np.matmul
             self.expm = sp.linalg.expm
+            self.eye = np.eye
             
     # TODO: this function should cash its results or it should put results in the dict
     def op_single(self, S, label='z'):
         if label == 'z':
             if self.is_sparse:
-                return sps.spdiags([self._proj_values(S)], dtype=self.dtype)
+                return sps.diags(self._proj_values(S), dtype=self.dtype)
             else:
-                return np.diag(self._proj_values(S), dtype=self.dtype)
+                return np.diag(self._proj_values(S))
                 
         if label == 'p':
             if self.is_sparse:
@@ -156,15 +165,15 @@ class System:
                 m = n = len(values) + 1
                 return sps.diags(values, offsets=1, shape=(m, n), dtype=self.dtype)
             else:
-                return np.diag(self._ladder_values(S), k=1, dtype=self.dtype)
+                return np.diag(self._ladder_values(S), k=1)
         
         if label == 'm':
             if self.is_sparse:
                 values = self._ladder_values(S)
                 m = n = len(values) + 1
-                return sps.spdiags(values, offsets=-1, shape=(m, n), dtype=self.dtype)
+                return sps.diags(values, offsets=-1, shape=(m, n), dtype=self.dtype)
             else:
-                return np.diag(self._ladder_values(S), k=-1, dtype=self.dtype)
+                return np.diag(self._ladder_values(S), k=-1)
             
         if label == 'x':
             return 0.5 * (self.op_single(S, 'p') + self.op_single(S, 'm'))
@@ -210,17 +219,17 @@ class System:
         assertion_message = (
             "Please ensure that the atom types are as in:\n {self.gammas_file}"
         )
-        for atom_type in set(self.nulcei_list):
+        for atom_type in set(self.nuclei_list):
             assert atom_type in self.gammas, assertion_message
 
         # get the frequencies
-        self.lamour_freq = {i: field * self.gammas[i] for i in set(self.nulcei_list)}
+        self.lamour_freq = {i: field * self.gammas[i] for i in set(self.nuclei_list)}
         self.lamour_freq_hz = {
             i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()
         }
 
     def get_freq_shift(self, atom_id, ppm, absolute=False, freq="hz"):
-        atom_type = self.nulcei_list[atom_id]
+        atom_type = self.nuclei_list[atom_id]
         lamour_val = (
             self.lamour_freq_hz[atom_type]
             if freq == "hz"
@@ -236,7 +245,7 @@ class System:
         ----------
 
         atom_id : int
-            The atom ID is an int that goes from 0 to len(System.nulcei_list)
+            The atom ID is an int that goes from 0 to len(System.nuclei_list)
         ppm : float
             chemical shift
         absolute : bool, optional
@@ -256,7 +265,7 @@ class System:
         ----------
 
         atom_id : int
-            The atom ID is an int that goes from 0-len(System.nulcei_list)
+            The atom ID is an int that goes from 0-len(System.nuclei_list)
         ppm : float
             chemical shift
         absolute : bool, optional
@@ -293,15 +302,19 @@ class System:
         )
         
         res = 1
-        for i in range(self.n_spins):
+        
+        for i, nucleus in enumerate(self.nuclei_list):
+            
+            spin = sd.spin(nucleus)
+            
             if i in idx:
                 label = idx_to_label[i]
                 res = self.kron(
                     res, 
-                    self.single_spin_dictionary[label]
+                    self.op_single(spin, label=label)
                 )
             else:
-                res = self.kron(res, self.small_identity)
+                res = self.kron(res, self.eye(int(2 * spin + 1)))
                     
         return res
         
@@ -348,13 +361,14 @@ class System:
         
         res_op = 1  # this is a trick to write pretier code
         
-        for i in range(self.n_spins):
+        for i, nuclei in enumerate(self.nuclei_list):
                 
+            spin = sd.spin(nuclei)
+            
             if i != idx:
-                # TODO: change for spin not only 1/2
-                res_op = self.kron(res_op, np.eye(2, dtype=self.dtype))
+                res_op = self.kron(res_op, self.eye(int(2*spin + 1), dtype=self.dtype))
             else:
-                res_op = self.kron(res_op, self.single_spin_dictionary[label], dtype=self.dtype)    
+                res_op = self.kron(res_op, self.op_single(spin, label=label), dtype=self.dtype)    
         
         return res_op
 
@@ -468,7 +482,7 @@ class System:
         """
         # we don't need to consider strong coupling if we have different nuclei types
         # If you really wanted you could also add a check for the shift difference vs coupling too
-        if self.nulcei_list[spin1] == self.nulcei_list[spin2]:
+        if self.nuclei_list[spin1] == self.nuclei_list[spin2]:
             axis = ["x", "y", "z"]
         else:
             axis = ["z"]

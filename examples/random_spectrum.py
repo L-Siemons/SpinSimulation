@@ -10,9 +10,9 @@ from timeit import default_timer as timer
 start_time = timer()
 
 # set the number of spins, for nspin>6 it will take time ...
-nspin = 5
+nspin = 7
 # set the spin types, here all proton
-atom_list = ['1H']*nspin
+atom_list = ['1H'] * nspin 
 
 #number of points in the spectrum
 number_of_points = 1000
