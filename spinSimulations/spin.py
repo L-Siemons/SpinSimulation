@@ -106,6 +106,15 @@ class System:
             self.expm = sp.linalg.expm
             self.eye = np.eye
             
+    def get_n_spins(self):
+        return self.n_spins
+
+    def get_spin_dim(self):
+        res = 1
+        for nuclei in self.nuclei_list:
+            res *= int(2 * sd.spin(nuclei) + 1)
+        return res
+    
     # TODO: this function should cash its results or it should put results in the dict
     def op_single(self, S, label='z'):
         if label == 'z':
@@ -280,7 +289,76 @@ class System:
         
         if idx >= self.n_spins:
             raise Exception("Index for a spin operator is out of range")
+        
+    def scalar(self, i: int, j: int, secular=False):
+        """
+        Return the operator corresponding to scalar coupling betweem spin i and j
 
+        Parameters
+        ----------
+        i : int
+            Idx of the first spin
+        j : int
+            Idx of the second spins
+        secular : bool, optional
+            If true, only 'izjz' is returnd, otherwise 'ixjx' + 'iyjy' + 'izjz' 
+
+        Returns
+        -------
+        numpy.ndarray
+            The operator we asked for
+        """
+        self._index_check(i)
+        self._index_check(j)
+        
+        if secular:
+            return self.matmul(self.op(i, "z"), self.op(j, "z"))
+    
+        res = 0
+        for coord in ('x', 'y', 'z'):
+            res += self.matmul(self.op(i, coord), self.op(j, coord))
+        return res
+
+    def singlet(self, i, j):
+        """
+        operator definition is taken from here
+        http://dx.doi.org/10.1016/j.jmr.2015.08.021
+        !! Currently only applicable for a manifold of 1/2 spins !!
+        
+        Parameters
+        ----------
+        i : int
+            Idx of the first spin
+        j : int
+            Idx of the second spins
+
+        Returns
+        -------
+        numpy.ndarray
+            The operator we asked for
+        """       
+        return self.scalar(i, j, secular=False) * 2**(2 - self.get_n_spins())
+    
+    def pol_level(self, i, label="z"):
+        """
+        operator definition is taken from here
+        http://dx.doi.org/10.1016/j.jmr.2015.08.021
+        !! Currently only applicable for a manifold of 1/2 spins !!
+        
+        Parameters
+        ----------
+        i : int
+            Idx of the first spin
+        j : int
+            Idx of the second spins
+
+        Returns
+        -------
+        numpy.ndarray
+            The operator we asked for
+        """       
+        return self.op(i, label) * 2 ** (1 - self.get_n_spins())
+    
     def set_lamour_freq(self, field):
         # get the frequencies
         self.lamour_freq = {i: field * sd.gamma(i) for i in set(self.nuclei_list)}
