@@ -350,9 +350,9 @@ class System:
             spin = sd.spin(nuclei)
             
             if i != idx:
-                res_op = self.kron(res_op, self.eye(int(2*spin + 1), dtype=self.dtype))
+                res_op = self.kron(res_op, self.eye(int(2*spin + 1)))
             else:
-                res_op = self.kron(res_op, self.op_single(spin, label=label), dtype=self.dtype)    
+                res_op = self.kron(res_op, self.op_single(spin, label=label))    
         
         return res_op
 
