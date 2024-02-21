@@ -115,7 +115,7 @@ class System:
             res *= int(2 * sd.spin(nuclei) + 1)
         return res
     
-    # TODO: this function should cash its results or it should put results in the dict
+    # TODO: this function should cash its result or it should put results in the dict
     def op_single(self, S, label='z'):
         if label == 'z':
             if self.is_sparse:
