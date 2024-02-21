@@ -29,7 +29,7 @@ start = np.sum([system.op_full(f'{i}z') for i in range(nspin)], axis=0)
 
 #set rho
 system.rho = start 
-system.load_gammas()
+# system.load_gammas()
 system.set_lamour_freq(14)
 
 # the operator we use for detection

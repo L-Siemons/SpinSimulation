@@ -94,6 +94,48 @@ class System:
         self.is_sparse = is_sparse
         self._set_matrix_operations()
         
+    def _set_matrix_operations(self):
+        if self.is_sparse:
+            self.kron = sps.kron
+            self.matmul = sparse_dot
+            self.expm = sps.linalg.expm
+            self.eye = sps.eye
+        else:
+            self.kron = np.kron
+            self.matmul = np.matmul
+            self.expm = sp.linalg.expm
+            self.eye = np.eye
+            
+    # TODO: this function should cash its results or it should put results in the dict
+    def op_single(self, S, label='z'):
+        if label == 'z':
+            if self.is_sparse:
+                return sps.diags(self._proj_values(S), dtype=self.dtype)
+            else:
+                return np.diag(self._proj_values(S))
+                
+        if label == 'p':
+            if self.is_sparse:
+                values = self._ladder_values(S)
+                m = n = len(values) + 1
+                return sps.diags(values, offsets=1, shape=(m, n), dtype=self.dtype)
+            else:
+                return np.diag(self._ladder_values(S), k=1)
+        
+        if label == 'm':
+            if self.is_sparse:
+                values = self._ladder_values(S)
+                m = n = len(values) + 1
+                return sps.diags(values, offsets=-1, shape=(m, n), dtype=self.dtype)
+            else:
+                return np.diag(self._ladder_values(S), k=-1)
+            
+        if label == 'x':
+            return 0.5 * (self.op_single(S, 'p') + self.op_single(S, 'm'))
+            
+        if label == 'y':
+            return -0.5 * 1j * (self.op_single(S, 'p') - self.op_single(S, 'm'))
+        
     def _proj_values(self, S):
         """
         Return all projections for a spin S in descending order
@@ -137,130 +179,6 @@ class System:
             np.sqrt(S*(S+1) - (m - S) * (m - S + 1))
             for m in range(n_proj - 1)
         ], dtype=self.dtype)
-    
-    def _set_matrix_operations(self):
-        if self.is_sparse:
-            self.kron = sps.kron
-            self.matmul = sparse_dot
-            self.expm = sps.linalg.expm
-            self.eye = sps.eye
-        else:
-            self.kron = np.kron
-            self.matmul = np.matmul
-            self.expm = sp.linalg.expm
-            self.eye = np.eye
-            
-    # TODO: this function should cash its results or it should put results in the dict
-    def op_single(self, S, label='z'):
-        if label == 'z':
-            if self.is_sparse:
-                return sps.diags(self._proj_values(S), dtype=self.dtype)
-            else:
-                return np.diag(self._proj_values(S))
-                
-        if label == 'p':
-            if self.is_sparse:
-                values = self._ladder_values(S)
-                m = n = len(values) + 1
-                return sps.diags(values, offsets=1, shape=(m, n), dtype=self.dtype)
-            else:
-                return np.diag(self._ladder_values(S), k=1)
-        
-        if label == 'm':
-            if self.is_sparse:
-                values = self._ladder_values(S)
-                m = n = len(values) + 1
-                return sps.diags(values, offsets=-1, shape=(m, n), dtype=self.dtype)
-            else:
-                return np.diag(self._ladder_values(S), k=-1)
-            
-        if label == 'x':
-            return 0.5 * (self.op_single(S, 'p') + self.op_single(S, 'm'))
-            
-        if label == 'y':
-            return -0.5 * 1j * (self.op_single(S, 'p') - self.op_single(S, 'm'))
-
-    def load_gammas(self):
-        """
-        load the gyromagnetic ratios
-        """
-        gammas_file = pkg_resources.resource_filename(
-            "spinSimulations", "dat/gammas.dat"
-        )
-
-        self.gammas = {}
-        with open(gammas_file) as f:
-            for line in f:
-                parts = line.split()
-                if len(parts) == 2 and parts[0][0] != "#":
-                    self.gammas[parts[0]] = float(parts[1])
-
-    def set_lamour_freq(self, field):
-        if self.gammas is None:
-            self.load_gammas()
-
-        # Ensure that the atom types are in gammas
-        assertion_message = (
-            "Please ensure that the atom types are as in:\n {self.gammas_file}"
-        )
-        for atom_type in set(self.nuclei_list):
-            assert atom_type in self.gammas, assertion_message
-
-        # get the frequencies
-        self.lamour_freq = {i: field * self.gammas[i] for i in set(self.nuclei_list)}
-        self.lamour_freq_hz = {
-            i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()
-        }
-
-    def get_freq_shift(self, atom_id, ppm, absolute=False, freq="hz"):
-        atom_type = self.nuclei_list[atom_id]
-        lamour_val = (
-            self.lamour_freq_hz[atom_type]
-            if freq == "hz"
-            else self.lamour_freq[atom_type]
-        )
-        shift = lamour_val * ppm
-        return shift if not absolute else lamour_val + shift
-
-    def get_shift_hz(self, atom_id, ppm, absolute=False):
-        """A wrapper for get_freq_shift that always gives the frequency in hertz
-
-        Parameters
-        ----------
-
-        atom_id : int
-            The atom ID is an int that goes from 0 to len(System.nuclei_list)
-        ppm : float
-            chemical shift
-        absolute : bool, optional
-            If True, it returns the absolute frequency. If False, it returns the frequency relative to the carrier
-
-        Returns
-        -------
-        float
-            The frequency in hertz
-        """
-        return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq="hz")
-
-    def get_shift_omega(self, atom_id, ppm, absolute=False):
-        """A wrapper for get_freq_shift that always gives the frequency in hertz
-
-        Parameters
-        ----------
-
-        atom_id : int
-            The atom ID is an int that goes from 0-len(System.nuclei_list)
-        ppm : float
-            chemical shift
-        absolute : bool, optional
-            If True it returns the absolute frequency. If False it returns the frequency relative to the carrier
-
-        Returns
-        -------
-        float
-            The frequency in angular frequency
-        """
-        return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq="omega")
 
     def op_full(self, name):
         """
@@ -362,6 +280,65 @@ class System:
         
         if idx >= self.n_spins:
             raise Exception("Index for a spin operator is out of range")
+
+    def set_lamour_freq(self, field):
+        # get the frequencies
+        self.lamour_freq = {i: field * sd.gamma(i) for i in set(self.nuclei_list)}
+        self.lamour_freq_hz = {
+            i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()
+        }
+
+    def get_freq_shift(self, atom_id, ppm, absolute=False, freq="hz"):
+        atom_type = self.nuclei_list[atom_id]
+        lamour_val = (
+            self.lamour_freq_hz[atom_type]
+            if freq == "hz"
+            else self.lamour_freq[atom_type]
+        )
+        shift = lamour_val * ppm
+        return shift if not absolute else lamour_val + shift
+
+    def get_shift_hz(self, atom_id, ppm, absolute=False):
+        """A wrapper for get_freq_shift that always gives the frequency in hertz
+
+        Parameters
+        ----------
+
+        atom_id : int
+            The atom ID is an int that goes from 0 to len(System.nuclei_list)
+        ppm : float
+            chemical shift
+        absolute : bool, optional
+            If True, it returns the absolute frequency. If False, it returns the frequency relative to the carrier
+
+        Returns
+        -------
+        float
+            The frequency in hertz
+        """
+        return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq="hz")
+
+    def get_shift_omega(self, atom_id, ppm, absolute=False):
+        """A wrapper for get_freq_shift that always gives the frequency in hertz
+
+        Parameters
+        ----------
+
+        atom_id : int
+            The atom ID is an int that goes from 0-len(System.nuclei_list)
+        ppm : float
+            chemical shift
+        absolute : bool, optional
+            If True it returns the absolute frequency. If False it returns the frequency relative to the carrier
+
+        Returns
+        -------
+        float
+            The frequency in angular frequency
+        """
+        return self.get_freq_shift(atom_id, ppm, absolute=absolute, freq="omega")
+
+
         
     def print_rho(
         self,
