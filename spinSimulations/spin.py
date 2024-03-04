@@ -113,9 +113,68 @@ class System:
         for nuclei in self.nuclei_list:
             res *= int(2 * sd.spin(nuclei) + 1)
         return res
-    
+
+    def _proj_values(self, s):
+        """
+        Return all projections for a spin s in descending order
+        Helper function to build
+
+        Parameters
+        ----------
+
+        s : int or float
+            Spin value
+
+        Returns
+        -------
+        numpy.ndarray
+            Projections for a spin s in descending order
+        """
+        n_proj = int(2*s + 1)
+        projections = [s - m for m in range(n_proj)]
+        result = np.array(projections, dtype=self.dtype)
+        return result
+
+    def _ladder_values(self, s):
+        """
+        Return all values on \pm 1 diagonal of a ladder operators
+        Helper function to build the ladder operators
+
+        Parameters
+        ----------
+
+        s : int or float
+            Spin value
+
+        Returns
+        -------
+        numpy.ndarray
+            Return all values on \pm 1 diagonal of a ladder operators
+        """
+        n_proj = int(2*s + 1)
+        iter_len = n_proj - 1
+        comprehnsion = [np.sqrt(s*(s+1) - (m-s) * (m-s+1)) for m in range(iter_len)]
+        result = np.array(comprehnsion, dtype=self.dtype)
+        return result
+
+
     # TODO: this function should cash its result or it should put results in the dict
     def op_single(self, S, label='z'):
+        """generates a single operator
+
+        Parameters
+        ----------
+        S : int
+            the id for the spin
+        label : str, optional
+            can be x,y,z,p,m and returns the corresponding single quantum operator
+            by default this is z
+
+        Returns
+        -------
+        np.ndarray, sparse matrix
+            the selected operator
+        """
         if label == 'z':
             if self.is_sparse:
                 return sps.diags(self._proj_values(S), dtype=self.dtype)
@@ -143,56 +202,11 @@ class System:
             
         if label == 'y':
             return -0.5 * 1j * (self.op_single(S, 'p') - self.op_single(S, 'm'))
-        
-    def _proj_values(self, S):
-        """
-        Return all projections for a spin S in descending order
-        Helper function to build 
-
-        Parameters
-        ----------
-
-        S : int or float
-            Spin value
-
-        Returns
-        -------
-        numpy.ndarray
-            Projections for a spin S in descending order
-        """
-        n_proj = int(2*S + 1)
-        return np.array([
-            S - m 
-            for m in range(n_proj)
-        ], dtype=self.dtype)
-    
-    def _ladder_values(self, S):
-        """
-        Return all values on \pm 1 diagonal of a ladder operators
-        Helper function to build the ladder operators
-
-        Parameters
-        ----------
-
-        S : int or float
-            Spin value
-
-        Returns
-        -------
-        numpy.ndarray
-            Return all values on \pm 1 diagonal of a ladder operators
-        """
-        n_proj = int(2*S + 1)
-        return np.array([
-            np.sqrt(S*(S+1) - (m - S) * (m - S + 1))
-            for m in range(n_proj - 1)
-        ], dtype=self.dtype)
 
     def op_full(self, name):
         """
-        Get the operator if is present in System.operators. Otherwise it is generated and added to the
-        dictionary. The operators follow the format N1aaN2bb where N1 and N2 are the atom inxdexes and
-        xx and bb are the keys in System.single_spin_dictionary. For example the name for the I1zI2z operator
+        Get any operator. These follow the format N1aaN2bb where N1 and N2 are the atom inxdexes and
+        xx and bb are the names of the operator. For example the name for the I1zI2z operator
         would be '0z1z' and I1zI2x would be '0z1x'.
 
         Parameters
@@ -207,37 +221,76 @@ class System:
         """
         
         idx = list(map(int, name[::2]))
-        idx_to_label = dict(
-            zip(idx, name[1::2])
-        )
+        idx_to_label = dict(zip(idx, name[1::2]))
         
         res = 1
-        
         for i, nucleus in enumerate(self.nuclei_list):
             
             spin = sd.spin(nucleus)
             
             if i in idx:
                 label = idx_to_label[i]
-                res = self.kron(
-                    res, 
-                    self.op_single(spin, label=label)
-                )
+                operator = self.op_single(spin, label=label)
+                res = self.kron(res, operator)
             else:
-                res = self.kron(res, self.eye(int(2 * spin + 1)))
+                identity_size = int(2 * spin + 1)
+                res = self.kron(res, self.eye(identity_size))
                     
         return res
-        
-        
+
+    def _index_check(self, idx):
+        '''
+        Some checks on the spin index
+        '''
+        if idx < 0:
+            raise Exception("Index for a spin operator cannot be negative")
+
+        if idx >= self.n_spins:
+            raise Exception("Index for a spin operator is out of range")
+
+    def _op(self, idx, label="z"):
+        """Return the operator for a spin system
+
+        Parameters
+        ----------
+        idx : int
+            Spin index (! In python, count from zero)
+        label : str
+            operator type, "x", "y", "z", "p", "m".
+
+        Returns
+        -------
+        ndarray
+            spin operator
+        """
+
+        # handling incorrect input
+        self._index_check(idx)
+
+        res_op = 1  # this is a trick to write pretier code
+
+        for i, nuclei in enumerate(self.nuclei_list):
+
+            spin = sd.spin(nuclei)
+
+            if i != idx:
+                res_op = self.kron(res_op, self.eye(int(2*spin + 1)))
+            else:
+                res_op = self.kron(res_op, self.op_single(spin, label=label))
+
+        return res_op
+
     def op(self, idx, label="z"):
         """Return the operator for a spin system
 
         Parameters
         ----------
-            idx : int 
-                Spin index (! In python, count from zero)
-            label :str 
-                operator type, "x", "y", "z", "p", "m".
+        idx : int, list
+            If the spin indx is a list it will sum all the operators with the name 'label'
+            over the spins provided in the list. If indx is an it it returns system._op()
+
+        label :str
+            operator type, "x", "y", "z", "p", "m".
 
         Returns
         -------
@@ -251,43 +304,10 @@ class System:
             for id in idx:
                 res += self._op(id, label=label)
             return res
-        
-        # idx as an int brunch
-        return self._op(idx=idx, label=label)
-    
-    def _op(self, idx, label="z"):
-        """Return the operator for a spin system
 
-        Args:
-            idx (int): Spin index (! In python, count from zero)
-            label (str): operator type, "x", "y", "z", "p", "m".
-
-        Returns:
-            ndarray: spin operator
-        """
-        
-        # handling incorrect input
-        self._index_check(idx)
-        
-        res_op = 1  # this is a trick to write pretier code
-        
-        for i, nuclei in enumerate(self.nuclei_list):
-                
-            spin = sd.spin(nuclei)
-            
-            if i != idx:
-                res_op = self.kron(res_op, self.eye(int(2*spin + 1)))
-            else:
-                res_op = self.kron(res_op, self.op_single(spin, label=label))    
-        
-        return res_op
-
-    def _index_check(self, idx):
-        if idx < 0:
-            raise Exception("Index for a spin operator cannot be negative")
-        
-        if idx >= self.n_spins:
-            raise Exception("Index for a spin operator is out of range")
+        # just makes the logic more explicit.
+        else:
+            return self._op(idx=idx, label=label)
         
     def scalar(self, i: int, j: int, secular=False):
         """
@@ -296,11 +316,11 @@ class System:
         Parameters
         ----------
         i : int
-            Idx of the first spin
+            Index of the first spin
         j : int
-            Idx of the second spins
+            Index of the second spins
         secular : bool, optional
-            If true, only 'izjz' is returnd, otherwise 'ixjx' + 'iyjy' + 'izjz' 
+            If true, only 'izjz' is returned, otherwise 'ixjx' + 'iyjy' + 'izjz'
 
         Returns
         -------
@@ -309,12 +329,18 @@ class System:
         """
         self._index_check(i)
         self._index_check(j)
-        
+
+        # we can make the logic a bit better here. Here we seperate the
+        # logic for selecting wheather we iterate over z or x,y,z from the
+        # calculation
+
         if secular:
-            return self.matmul(self.op(i, "z"), self.op(j, "z"))
-    
+            coord_list = ('z')
+        else:
+            coord_list = ('x', 'y', 'z')
+
         res = 0
-        for coord in ('x', 'y', 'z'):
+        for coord in coord_list:
             res += self.matmul(self.op(i, coord), self.op(j, coord))
         return res
 
@@ -327,9 +353,9 @@ class System:
         Parameters
         ----------
         i : int
-            Idx of the first spin
+            Index of the first spin
         j : int
-            Idx of the second spins
+            Index of the second spins
 
         Returns
         -------
@@ -347,9 +373,9 @@ class System:
         Parameters
         ----------
         i : int
-            Idx of the first spin
+            Index of the first spin
         j : int
-            Idx of the second spins
+            Index of the second spins
 
         Returns
         -------
@@ -359,21 +385,48 @@ class System:
         return self.op(i, label) * 2 ** (1 - self.get_n_spins())
     
     def set_lamour_freq(self, field):
-        # get the frequencies
+        """Get the Lamour frequencies
+
+        Parameters
+        ----------
+        field : float
+            The field in Tesla
+        """
         self.lamour_freq = {i: field * sd.gamma(i) for i in set(self.nuclei_list)}
-        self.lamour_freq_hz = {
-            i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()
-        }
+        self.lamour_freq_hz = {i: freq / (np.pi * 2) for i, freq in self.lamour_freq.items()}
 
     def get_freq_shift(self, atom_id, ppm, absolute=False, freq="hz"):
+        """Get the chemical shift in frequency for the selected frequency
+
+        Parameters
+        ----------
+        atom_id : int
+            The atom id
+        ppm : float
+            chemical shift in ppm
+        absolute : bool
+            if True return the frequency plus the lamour frequency
+        freq : str, optional
+            Description
+
+        Returns
+        -------
+        TYPE
+            Description
+        """
         atom_type = self.nuclei_list[atom_id]
-        lamour_val = (
-            self.lamour_freq_hz[atom_type]
-            if freq == "hz"
-            else self.lamour_freq[atom_type]
-        )
+        if freq == "hz":
+            lamour_val = self.lamour_freq_hz[atom_type]
+        else:
+            lamour_val = self.lamour_freq[atom_type]
+
         shift = lamour_val * ppm
-        return shift if not absolute else lamour_val + shift
+
+        # I don't really like doing the logic inside the return statement
+        if absolute == True:
+            return shift
+        else:
+            return lamour_val + shift
 
     def get_shift_hz(self, atom_id, ppm, absolute=False):
         """A wrapper for get_freq_shift that always gives the frequency in hertz
@@ -417,13 +470,25 @@ class System:
 
 
         
-    def print_rho(
-        self,
-    ):
-        """Summary"""
+    def print_rho(self,):
+        """Prints Rho"""
         print(np.array_str(self.rho, precision=2, suppress_small=True))
 
     def calc_single_spin_rotation(self, phase, angle):
+        """Calculate the rotation matrix for a single spin. This will return a 2x2 matrix
+
+        Parameters
+        ----------
+        phase : str
+            phase of the pulse, x/y/z
+        angle : float
+            the tilt angle of the pulse
+
+        Returns
+        -------
+        n.ndarry
+            the rotation matrix
+        """
         c, s = np.cos(angle / 2), np.sin(angle / 2)
         if phase == "x":
             return np.array([[c, -1j * s], [-1j * s, c]], dtype=np.cdouble)
@@ -435,7 +500,23 @@ class System:
             print("Phase for rotation is not recognised")
 
     def calc_rotation_mat(self, phase, angle, active="all"):
-        # this is the rotation matrix
+        """Calculate the rotation matrix for spins in the whole spin system
+
+        Parameters
+        ----------
+        phase : str
+            phase of the pulse, x/y/z
+        angle : float
+            the tilt angle of the pulse
+        active : str, list
+            If 'all' then the the rotation is allied to all the spins. Otherwise it can be a list
+            of spin ids and then it will apply the rotation to all the spins in the list.
+
+        Returns
+        -------
+        np.ndarray
+            the rotation matrix
+        """
         rotation = self.calc_single_spin_rotation(phase, angle)
 
         if active == "all":
@@ -597,16 +678,16 @@ class System:
 
         return time_array, fid
 
-def sparse_dot(A, B):
+def sparse_dot(a, b):
     """This is a helper function to provide two arguments multiplication function for sparse matrices
 
     Parameters
     ----------
-    A : scipy sparse matrix
-    B : scipy sparse matrix
+    a : scipy sparse matrix
+    b : scipy sparse matrix
 
     Returns
     -------
     scipy sparse matrix
     """
-    return A.dot(B)
+    return a.dot(b)
