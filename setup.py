@@ -1,5 +1,5 @@
 from setuptools import setup, find_packages
-from Cython.Build import cythonize
+# from Cython.Build import cythonize
 import numpy as np
 
 descrip='''
@@ -15,9 +15,6 @@ setup(
     author='L. Siemons',
     author_email='lucas.siemons@googlemail.com',
     packages=find_packages(),
-    ext_modules=cythonize([
-        "spinSimulations/cython_extensions.pyx", 
-       ]),
     #license='LICENSE.txt',
     package_data={'spinSimulations': ['dat/*dat'],  },
     include_package_data=True,
