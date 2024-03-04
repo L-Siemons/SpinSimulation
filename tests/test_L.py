@@ -1,7 +1,6 @@
 from random import shuffle
 import numpy as np
 import scipy.sparse as sps
-import spinSimulations.spin as s
 from spinSimulations.solver_L import mat2vec
 
 # TODO: these are simple tests

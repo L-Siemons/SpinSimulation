@@ -6,7 +6,6 @@ import numpy as np
 import scipy as sp
 import scipy.sparse as sps
 import functools
-import pkg_resources
 
 import spindata as sd
 
@@ -247,7 +246,7 @@ class System:
         """
         
         # List of idx brunch
-        if type(idx) == list:
+        if isinstance(idx, list):
             res = 0
             for id in idx:
                 res += self._op(id, label=label)

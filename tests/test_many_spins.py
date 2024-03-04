@@ -1,8 +1,6 @@
 import spinSimulations.spin as s
 import numpy as np
 
-from single_spins_ops import single_spin_ops
-
 # TODO: these are simple tests
 # General test case should be written
 class TestOpFull:
