@@ -1,5 +1,7 @@
 setup.py
 spinSimulations/__init__.py
+spinSimulations/solver_H.py
+spinSimulations/solver_L.py
 spinSimulations/spin.py
 spinSimulations/utils_spectra.py
 spinSimulations.egg-info/PKG-INFO
@@ -8,3 +10,7 @@ spinSimulations.egg-info/dependency_links.txt
 spinSimulations.egg-info/not-zip-safe
 spinSimulations.egg-info/top_level.txt
 spinSimulations/dat/gammas.dat
+tests/test_H.py
+tests/test_L.py
+tests/test_many_spins.py
+tests/test_single_spin.py
