@@ -19,6 +19,10 @@ Once these are installed you can install the module as you wish. For example wit
 
 python3 setup.py install
 
+## Testing
+
+To run the tests, run the `pytest` from the head of directory. For this one, `pytest` package is required.
+
 ## Currently implimented
 
 Currently in this module there is basic functionality for
