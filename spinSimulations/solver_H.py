@@ -1,5 +1,7 @@
 ### HERE SOLVERS FOR HAMILTONIAN FORMALISM WILL BE
 import numpy as np
+import scipy as sp
+import scipy.sparse as sps
 import functools
 import types
 
@@ -14,6 +16,41 @@ def traj_prop_h(
         return _traj_prop_time_dependent(rho, ham, times, traj_ops,system=system)
     else: 
         return _traj_prop_time_independent(rho, ham, times, traj_ops,system=system)
+
+def _set_ops(op, system=None):
+    # matmul, kron, expm
+    if system:
+        return system.matmul, system.kron, system.expm
+    
+    if sps.issparse(op):
+        return sparse_dot, sps.kron, sps.linalg.expm
+    else:
+        return np.matmul, np.kron, sp.linalg.expm
+        
+        
+
+def prop_h(op, generator, time=None, system=None, reverse=False):
+    
+    matmul, _ , expm = _set_ops(op, system=system)
+    
+    if time:
+        prop = expm(-1j * generator * time)
+    else:
+        prop = expm(-1j * generator)
+        
+    if reverse:
+        return matmul(
+                prop.conj().T, matmul(op, prop)
+            )
+        
+    return matmul(
+            prop, matmul(op, prop.conj().T)
+        )
+         
+        
+def com_h(a, b, system=None):
+    matmul, _ , _ = _set_ops(a, system=system)
+    return matmul(a, b) - matmul(b, a)
 
 def _traj_prop_time_dependent(
         rho=np.array([[]]), 
@@ -95,3 +132,19 @@ def norm_frob(op_first, op_second=None):
             return (op_first.conj() * op_first).sum()
         
     return (op_first.conj() * op_second).sum()
+
+
+# TODO: it is a replica from a spin file, do something with it
+def sparse_dot(a, b):
+    """This is a helper function to provide two arguments multiplication function for sparse matrices
+
+    Parameters
+    ----------
+    a : scipy sparse matrix
+    b : scipy sparse matrix
+
+    Returns
+    -------
+    scipy sparse matrix
+    """
+    return a.dot(b)

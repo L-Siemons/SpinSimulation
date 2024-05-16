@@ -137,7 +137,7 @@ class System:
 
     def _ladder_values(self, s):
         """
-        Return all values on \pm 1 diagonal of a ladder operators
+        Return all values on pm 1 diagonal of a ladder operators
         Helper function to build the ladder operators
 
         Parameters
@@ -149,7 +149,7 @@ class System:
         Returns
         -------
         numpy.ndarray
-            Return all values on \pm 1 diagonal of a ladder operators
+            Return all values on pm 1 diagonal of a ladder operators
         """
         n_proj = int(2*s + 1)
         iter_len = n_proj - 1
@@ -235,7 +235,12 @@ class System:
             else:
                 identity_size = int(2 * spin + 1)
                 res = self.kron(res, self.eye(identity_size))
-                    
+        
+        # TODO: allow the return format to be more flexible
+        # For now csc  format is returned as it is supposed to be faster
+        if self.is_sparse:
+            return sps.csc_matrix(res)
+        
         return res
 
     def _index_check(self, idx):
@@ -303,11 +308,17 @@ class System:
             res = 0
             for id in idx:
                 res += self._op(id, label=label)
-            return res
 
         # just makes the logic more explicit.
         else:
-            return self._op(idx=idx, label=label)
+            res = self._op(idx=idx, label=label)
+
+        # TODO: allow the return format to be more flexible
+        # For now csc  format is returned as it is supposed to be faster
+        if self.is_sparse:
+            return sps.csc_matrix(res)
+       
+        return res
         
     def scalar(self, i: int, j: int, secular=False):
         """
