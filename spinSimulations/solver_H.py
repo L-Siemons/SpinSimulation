@@ -18,20 +18,20 @@ def traj_prop_h(
         return _traj_prop_time_independent(rho, ham, times, traj_ops,system=system)
 
 def _set_ops(op, system=None):
-    # matmul, kron, expm
+    # matmul, elem_mul, kron, expm
     if system:
-        return system.matmul, system.kron, system.expm
+        return system.matmul, system.multiply, system.kron, system.expm
     
     if sps.issparse(op):
-        return sparse_dot, sps.kron, sps.linalg.expm
+        return sparse_dot, sparse_multiply, sps.kron, sps.linalg.expm
     else:
-        return np.matmul, np.kron, sp.linalg.expm
+        return np.matmul, np.multiply, np.kron, sp.linalg.expm
         
         
 
 def prop_h(op, generator, time=None, system=None, reverse=False):
     
-    matmul, _ , expm = _set_ops(op, system=system)
+    matmul, _, _, expm = _set_ops(op, system=system)
     
     if time:
         prop = expm(-1j * generator * time)
@@ -49,7 +49,7 @@ def prop_h(op, generator, time=None, system=None, reverse=False):
          
         
 def com_h(a, b, system=None):
-    matmul, _ , _ = _set_ops(a, system=system)
+    matmul, *_ = _set_ops(a, system=system)
     return matmul(a, b) - matmul(b, a)
 
 def _traj_prop_time_dependent(
@@ -60,6 +60,8 @@ def _traj_prop_time_dependent(
         system=None,
     ):
     
+    matmul, multiply, _ , expm = _set_ops(rho, system=system)
+    
     ampls = [np.zeros_like(times, dtype=system.dtype) for _ in traj_ops]
     
         # evaulate timestep
@@ -67,15 +69,15 @@ def _traj_prop_time_dependent(
 
     # propogate
     for idx, time in enumerate(times):
-        prop = system.expm(-1j * ham(time) * dt)
+        prop = expm(-1j * ham(time) * dt)
         prop_dag = prop.conj().transpose()
         if idx != 0:
             rho = functools.reduce(
-                system.matmul,
+                matmul,
                 [prop, rho, prop_dag]
             )
         for traj_op, ampl in zip(traj_ops, ampls):
-            ampl[idx] = amplitude(traj_op, rho)
+            ampl[idx] = amplitude(traj_op, rho, multiply)
     return ampls
 
 def _traj_prop_time_independent(
@@ -86,27 +88,29 @@ def _traj_prop_time_independent(
         system=None,
     ):
     
+    matmul, multiply, _ , expm = _set_ops(rho, system=system)
+    
     ampls = [np.zeros_like(times, dtype=system.dtype) for _ in traj_ops]
     
         # evaulate timestep
     dt = times[1] - times[0]
     
     # define propogators
-    prop = system.expm(-1j * ham * dt)
+    prop = expm(-1j * ham * dt)
     prop_dag = prop.conj().transpose()
     
     # propogate
     for idx, _ in enumerate(times):
         if idx != 0:
             rho = functools.reduce(
-                system.matmul,
+                matmul,
                 [prop, rho, prop_dag]
             )
         for traj_op, ampl in zip(traj_ops, ampls):
-            ampl[idx] = amplitude(traj_op, rho)
+            ampl[idx] = amplitude(traj_op, rho, multiply)
     return ampls
 
-def amplitude(op_to, op_from):
+def amplitude(op_to, op_from, multiply):
     """Calculate amplitude of operator_to in operator_from
 
     Args:
@@ -116,9 +120,9 @@ def amplitude(op_to, op_from):
     Returns:
         _type_: _description_
     """    
-    return norm_frob(op_to, op_from) / norm_frob(op_to)
+    return norm_frob(op_to, op_from, multiply=multiply) / norm_frob(op_to, multiply=multiply)
 
-def norm_frob(op_first, op_second=None):
+def norm_frob(op_first, op_second=None, multiply=None):
     """Calculate frobenious norm (squared)
 
     Args:
@@ -129,9 +133,9 @@ def norm_frob(op_first, op_second=None):
         _type_: _description_
     """    
     if op_second is None:
-            return (op_first.conj() * op_first).sum()
+            return (multiply(op_first.conj(), op_first)).sum()
         
-    return (op_first.conj() * op_second).sum()
+    return (multiply(op_first.conj(), op_second)).sum()
 
 
 # TODO: it is a replica from a spin file, do something with it
@@ -148,3 +152,7 @@ def sparse_dot(a, b):
     scipy sparse matrix
     """
     return a.dot(b)
+
+# TODO: the same as sparse dot
+def sparse_multiply(a, b):
+    return a.multiply(b)

@@ -97,11 +97,13 @@ class System:
         if self.is_sparse:
             self.kron = sps.kron
             self.matmul = sparse_dot
+            self.multiply = sparse_multiply
             self.expm = sps.linalg.expm
             self.eye = sps.eye
         else:
             self.kron = np.kron
             self.matmul = np.matmul
+            self.multiply = np.multiply
             self.expm = sp.linalg.expm
             self.eye = np.eye
             
@@ -702,3 +704,6 @@ def sparse_dot(a, b):
     scipy sparse matrix
     """
     return a.dot(b)
+
+def sparse_multiply(a, b):
+    return a.multiply(b)
