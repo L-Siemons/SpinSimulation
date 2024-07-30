@@ -110,6 +110,9 @@ def _traj_prop_time_independent(
             ampl[idx] = amplitude(traj_op, rho, multiply)
     return ampls
 
+def prop_uni(op, prop):
+    return prop @ op @ prop.conj().T
+
 def amplitude(op_to, op_from, multiply):
     """Calculate amplitude of operator_to in operator_from
 

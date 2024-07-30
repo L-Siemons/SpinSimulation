@@ -57,7 +57,8 @@ class System:
 
     """
 
-    def __init__(self, n_spins, nuclei_list=None, dtype=np.cdouble, is_sparse=True):
+    def __init__(self, n_spins, nuclei_list=None, dtype=np.cdouble, 
+                is_sparse=True, Js=None, ppms=None, field=None):
         """
         Initial set up
 
@@ -73,10 +74,11 @@ class System:
         """
         self.n_spins = n_spins
         
-        if nuclei_list is None:
-            self.nuclei_list = ["1H"] * n_spins
-        else:
-            self.nuclei_list = nuclei_list
+        # set spin system params
+        self.set_nuclei_list(nuclei_list)
+        self.set_Js(Js)
+        self.set_ppms(ppms)
+        self.field = field
         
         self.small_identity = np.identity(2, dtype=np.cdouble)
         self.operators = {}
@@ -88,6 +90,128 @@ class System:
         self.lamour_freq_hz = None
         self.dtype = dtype
         self.set_sparse(is_sparse)
+        
+    def set_nuclei_list(self, nuclei_list):
+        if nuclei_list is None:
+            self.nuclei_list = ["1H"] * self.n_spins
+        else:
+            # check if nuclei list is compatable with the number of spins
+            if len(nuclei_list) > self.n_spins:
+                raise Exception(
+                    'Nuclei list should be '
+                    'the same size as n_spins'
+                )
+            self.nuclei_list = nuclei_list
+
+    def set_Js(self, Js):
+        
+        if Js is None:
+            self.Js = None
+            return
+        
+        if Js.shape[0] != Js.shape[1]:
+            raise Exception("J-coupling matrix must be square")
+        
+        if Js.shape[0] != self.get_n_spins():
+            raise Exception(
+                    "J-coupling matrix shape is incopatable " 
+                    "with the number of spins"
+                )
+            
+        self.Js = Js
+
+    def set_ppms(self, ppms):
+        # THESE ARE SPIN PPM, not transition ppm
+        if ppms is None:
+            self.ppms = None
+            return
+            
+        if len(ppms) != self.get_n_spins():
+            raise Exception(
+                    "The amount of ppms should be the same "
+                    "As the number of spins"
+                )
+            
+        self.ppms = ppms
+
+    # TODO: maybe untie build_ham_lab and build_ham_rf
+    def build_ham_lab(self, field=None, ppms=None, Js=None, Hz=False):
+        if field is None:
+            if self.field is None:
+                Exception('Field is not provided')
+            field = self.field
+        
+        if ppms is not None:
+            self.set_ppms(ppms)
+        
+        if Js is not None:
+            self.set_Js(Js)
+            
+        nuclei_list = self.nuclei_list
+        n_spins = self.get_n_spins()
+        op = self.op
+        
+        ham = 0.
+        for idx, ppm in enumerate(self.ppms):
+            nuc = nuclei_list[idx]
+            ham = ham + (
+                (1 + ppm) * field * sd.gamma(nuc) * op(idx, 'z')
+            )
+        
+        
+        for idx_1 in range(n_spins):
+            for idx_2 in range(idx_1 + 1 , n_spins):
+                secular = (
+                    False if nuclei_list[idx_1] == nuclei_list[idx_2] 
+                    else True
+                )
+                ham = ham + 2 * np.pi * self.Js[idx_1, idx_2] * self.scalar(idx_1, idx_2, secular=secular)
+        
+        if Hz:
+            ham = ham / 2 / np.pi
+                
+        return ham
+
+    def build_ham_rf(
+            self, field, nucs_on_res=[], 
+            ppms=None, Js=None, Hz=False):
+        
+        if ppms is not None:
+            self.set_ppms(ppms)
+        
+        if Js is not None:
+            self.set_Js(Js)
+            
+        nuclei_list = self.nuclei_list
+        n_spins = self.get_n_spins()
+        ppms = self.get_ppms()
+        op = self.op
+        
+        ham = 0.
+        for idx, ppm in enumerate(ppms):
+            nuc = nuclei_list[idx]
+            if nuc in nucs_on_res:
+                coeff = ppm
+            else:
+                coeff = 1 + ppm
+                
+            ham = ham + (
+                coeff * field * sd.gamma(nuc) * op(idx, 'z')
+            )
+            
+        
+        for idx_1 in range(n_spins):
+            for idx_2 in range(idx_1 + 1 , n_spins):
+                secular = (
+                    False if nuclei_list[idx_1] == nuclei_list[idx_2] 
+                    else True
+                )
+                ham += 2 * np.pi * self.Js[idx_1, idx_2] * self.scalar(idx_1, idx_2, secular=secular)
+        
+        if Hz:
+            ham = ham / 2 / np.pi
+                
+        return ham
 
     def set_sparse(self, is_sparse=True):
         self.is_sparse = is_sparse
@@ -207,9 +331,10 @@ class System:
 
     def op_full(self, name):
         """
-        Get any operator. These follow the format N1aaN2bb where N1 and N2 are the atom inxdexes and
-        xx and bb are the names of the operator. For example the name for the I1zI2z operator
-        would be '0z1z' and I1zI2x would be '0z1x'.
+        Get any operator. These follow the format N1aaN2bb where N1 and N2 are 
+        the atom inxdexes and xx and bb are the names of the operator. 
+        For example the name for the I1zI2z operator would be '0z1z' and I1zI2x 
+        would be '0z1x'.
 
         Parameters
         ----------
