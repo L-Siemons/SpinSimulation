@@ -113,6 +113,12 @@ def _traj_prop_time_independent(
 def prop_uni(op, prop):
     return prop @ op @ prop.conj().T
 
+def uni(op, duration=None, spin_system=None):
+    _, _, _, expm = _set_ops(op, spin_system)
+    if duration is None:
+        return expm(-1j * op)
+    return expm(-1j * op * duration)
+
 def amplitude(op_to, op_from, multiply):
     """Calculate amplitude of operator_to in operator_from
 
