@@ -172,6 +172,12 @@ class System:
                 
         return ham
 
+    def get_ppms(self):
+        return self.ppms
+    
+    def get_Js(self):
+        return self.Js
+
     def build_ham_rf(
             self, field, nucs_on_res=[], 
             ppms=None, Js=None, Hz=False):
@@ -412,14 +418,15 @@ class System:
 
         return res_op
 
-    def op(self, idx, label="z"):
+    def op(self, idx, label="z", phi=None):
         """Return the operator for a spin system
 
         Parameters
         ----------
         idx : int, list
-            If the spin indx is a list it will sum all the operators with the name 'label'
-            over the spins provided in the list. If indx is an it it returns system._op()
+            If the spin indx is a list it will sum all the operators 
+            with the name 'label' over the spins provided in the list. 
+            If idx is an it it returns system._op()
 
         label :str
             operator type, "x", "y", "z", "p", "m".
@@ -429,6 +436,14 @@ class System:
         numpy.ndarray
             spin operator
         """
+        
+        if phi is not None:
+            op_x = self.op(idx, label="x")
+            op_y = self.op(idx, label="y")
+        
+            return (
+                np.cos(phi) * op_x + np.sin(phi) * op_y
+            )
         
         # List of idx brunch
         if isinstance(idx, list):
