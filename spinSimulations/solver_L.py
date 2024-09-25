@@ -1,6 +1,7 @@
 ### HERE SOLVERS FOR LIOUVILLIAN FORMALISM WILL BE
 import numpy as np
 import scipy.sparse as sps
+from spinSimulations.solver_H import _set_ops
 
 # ALL VECTORIZATION ARE PERFORMED ROWWISE
 def mat2vec(rho):
@@ -20,6 +21,15 @@ def _mat2vec_dense(rho):
 def vec2mat(rho):
     N=int(np.shape(rho)[0]**0.5)
     return rho.reshape(N,N)
+
+def amplitude_v(A, B):
+    return np.real(np.dot(A,B)/np.dot(A,A))
+
+def calc_uni_SO(op, duration=None, spin_system=None):
+    _, _, _, expm = _set_ops(op, spin_system)
+    if duration is None:
+        return expm(-1j * op)
+    return expm(-1j * comm_SO(op) * duration)
 
 def projector_SO(A):
     return np.outer(mat2vec(A), mat2vec(A).conj()) / np.dot(mat2vec(A), mat2vec(A).conj())

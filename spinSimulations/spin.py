@@ -135,7 +135,7 @@ class System:
         self.ppms = ppms
 
     # TODO: maybe untie build_ham_lab and build_ham_rf
-    def build_ham_lab(self, field=None, ppms=None, Js=None, Hz=False):
+    def build_ham_lab(self, field=None, ppms=None, Js=None, Hz=False, ZULF=False):
         if field is None:
             if self.field is None:
                 Exception('Field is not provided')
@@ -162,7 +162,7 @@ class System:
         for idx_1 in range(n_spins):
             for idx_2 in range(idx_1 + 1 , n_spins):
                 secular = (
-                    False if nuclei_list[idx_1] == nuclei_list[idx_2] 
+                    False if nuclei_list[idx_1] == nuclei_list[idx_2] or ZULF
                     else True
                 )
                 ham = ham + 2 * np.pi * self.Js[idx_1, idx_2] * self.scalar(idx_1, idx_2, secular=secular)
