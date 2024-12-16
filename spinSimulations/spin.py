@@ -212,7 +212,8 @@ class System:
                     False if nuclei_list[idx_1] == nuclei_list[idx_2] 
                     else True
                 )
-                ham += 2 * np.pi * self.Js[idx_1, idx_2] * self.scalar(idx_1, idx_2, secular=secular)
+                ham += 2 * np.pi * self.Js[idx_1, idx_2] \
+                    * self.scalar(idx_1, idx_2, secular=secular)
         
         if Hz:
             ham = ham / 2 / np.pi
@@ -556,7 +557,7 @@ class System:
         atom_id : int
             The atom id
         ppm : float
-            chemical shift in ppm
+            chemical shift in ppms
         absolute : bool
             if True return the frequency plus the lamour frequency
         freq : str, optional
