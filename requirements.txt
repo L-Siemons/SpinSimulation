@@ -1,7 +1,7 @@
 # requirements.txt
 
 # External Packages (required for installation via pip)
-numpy>=1.22.3       # Used for numerical operations, specify minimum version for compatibility
+numpy>=1.22.3,<3.0.0# Used for numerical operations, specify minimum version for compatibility
 scipy>=1.8.0        # Utilized for scientific computing, specify minimum version for compatibility
 matplotlib>=3.5.1   # Required for plotting and visualization, specify minimum version for compatibility
 spindata 

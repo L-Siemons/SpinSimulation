@@ -442,9 +442,18 @@ class System:
             op_x = self.op(idx, label="x")
             op_y = self.op(idx, label="y")
         
-            return (
-                np.cos(phi) * op_x + np.sin(phi) * op_y
-            )
+            phi = np.asarray(phi)
+            if phi.ndim == 0:
+                return (
+                    np.cos(phi) * op_x + np.sin(phi) * op_y
+                )
+            elif phi.ndim == 1:
+                return (
+                    np.cos(phi[:, None, None]) * op_x[None, :, :] 
+                    + np.sin(phi[:, None, None]) * op_y[None, :, :]
+                )
+            else:
+                raise ValueError('Phi can have 0 or 1 dims')
         
         # List of idx brunch
         if isinstance(idx, list):

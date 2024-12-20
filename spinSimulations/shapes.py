@@ -2,6 +2,8 @@ import numpy as np
 from scipy import integrate
 import inspect
 
+from typing import Callable, List, Union, Optional
+
 # TODO: put it in the file?
 # first line    -- center
 # second line   -- amplitude
@@ -44,6 +46,53 @@ composite_pulse_params = {
     }
 }
 
+
+def combine_shapes(
+    tau_p,
+    shape_list: list, 
+    time_list: Optional[Union[List[float], np.ndarray]]= None,
+    scale_list: Optional[Union[List[float], np.ndarray]]= None,
+    phase_list: Optional[Union[List[float], np.ndarray]]=None):
+    
+    if time_list is None:
+        time_list = np.ones(shape=len(shape_list), dtype=np.float32) / len(shape_list)
+    else:
+        assert len(time_list) == len(shape_list), 'Shape list and time list should be equal'
+        time_list = np.array(time_list)
+        time_list = time_list / time_list.sum()
+        assert np.all(time_list >= 0), 'Elements of time_list should be positive'
+        
+    if scale_list is None:
+        scale_list = np.ones(shape=len(shape_list), dtype=np.float32)
+    else:
+        assert len(scale_list) == len(shape_list), 'Shape list and scale list should be equal'
+        scale_list = np.array(scale_list) / max(np.abs(scale_list))
+        
+    if phase_list is None:
+        phase_list = np.zeros(shape=len(shape_list), dtype=np.float32)
+    else:
+        assert len(phase_list) == len(shape_list), 'Shape list and scale list should be equal'
+        
+    time_cumsum = np.cumsum(time_list) * tau_p
+    def _inner_func(ts):
+        # Ensure ts is at least a 1D array
+        ts = np.atleast_1d(ts)
+        ampls = np.zeros_like(ts)
+        phases = np.zeros_like(ts)
+        
+        cumulative_mask = np.zeros_like(ts, dtype=bool)
+        for i, (shape, t_now, ph_now, scale_now) in enumerate(zip(shape_list, time_cumsum, phase_list, scale_list)):
+            # Update phases only for elements not already updated
+            mask = (ts < t_now) & ~cumulative_mask
+            temp_ts = ts if i == 0 else ts - time_cumsum[i-1]
+            ampl_now, phase_now = shape(tau_p * time_list[i])(temp_ts[mask])
+            ampls[mask] = ampl_now * scale_now
+            phases[mask] = (phase_now + ph_now)
+            cumulative_mask |= mask  # Mark these elements as updated
+            
+        return (ampls[0], phases[0]) if ampls.size == 1 else (ampls, phases)
+    return _inner_func
+        
 def gauss(
     tau_p, truncation=1, 
     sigma=None, mu=0.5, 
@@ -58,11 +107,13 @@ def gauss(
             truncation = truncation / 100
         sigma = _sigma_from_trunc(truncation)
     
-    mu = mu * tau_p
-    sigma = sigma * tau_p
+    mu = mu 
+    sigma = sigma 
     def _inner_func(ts):
         ts = np.atleast_1d(ts)
-        ampls = np.exp(-0.5 * (ts - mu)**2 / sigma**2)
+        xs = ts / tau_p - mu
+        xs = xs * (1 - np.abs(0.5 - mu))
+        ampls = np.exp(-0.5 * (xs / sigma)**2) 
         phases = np.ones(ts.shape) * phase
         return (ampls[0], phases[0]) if ampls.size == 1 else (ampls, phases)
     return _inner_func
@@ -88,17 +139,67 @@ def sinc(tau_p, n:int=3, mu=0.5):
         return np.sinc(2 * n * (ts / tau_p - mu))
     return _inner_func
 
-def sinc_pp(tau_p, phase=0, mu=0.5, window=False):
-    
+def sinc_pp(tau_p, phase=0, mu=0.5, null=5, window=False):
+    max_ampl = 0.5477225575051661
     def _inner_func(ts):
         ts = np.atleast_1d(ts)
-        x = ts/tau_p - mu
-        x *= 10
-        ampls = np.sinc(x)*np.sqrt(.3+x**2+x**4)*np.exp(-(x/2.3)**2) / 0.5477225575051661
-        # ampls[abs(x) >= np.abs(5-mu)] = 0
+        x_init = ts/tau_p - mu
+        x_init = x_init * (1 - np.abs(0.5 - mu))
+        x = x_init * 2 * null
+        ampls = np.sinc(x)*np.sqrt(.3+x**2+x**4)*np.exp(-(x/2.3)**2) / max_ampl
+        # ampls[abs(x_init) >= 0.5] = 0 # cut the sholders 
         if window:
             # It is hunning window
             ampls *= 0.5 * (1 - np.cos(2 * np.pi * x / 10))
+        phases = np.full(ampls.shape, 0, dtype=np.float64)
+        phases[ampls < 0] = np.pi
+        phases += phase
+        ampls = np.abs(ampls)
+        # If the input was a scalar, return a scalar output
+        return (ampls[0], phases[0]) if ampls.size == 1 else (ampls, phases)
+    
+    return _inner_func
+
+def sinc_pp_90(tau_p, phase=0):
+    max_ampl = 0.5477225575051661
+    def _inner_func(ts):
+        ts = np.atleast_1d(ts)
+        x_init = ts/tau_p
+        x_init = x_init * 0.4
+        x = x_init * 10
+        mask = (np.abs(x) <= 1)  # Speed up the central peak for small x
+        x = np.where(mask, np.sign(x) * (2 * np.abs(x) - 1), x)
+        ampls = np.sinc(x)*np.sqrt(.3+x**2+x**4)*np.exp(-(x/2.3)**2) / max_ampl
+        mask = (x == 0)
+        ampls = np.where(mask, 0, ampls)
+        phases = np.full(ampls.shape, 0, dtype=np.float64)
+        phases[ampls < 0] = np.pi
+        phases += phase
+        ampls = np.abs(ampls)
+        # If the input was a scalar, return a scalar output
+        return (ampls[0], phases[0]) if ampls.size == 1 else (ampls, phases)
+    
+    return _inner_func
+
+def sinc_pp_2(tau_p, phase=0, mu=0.5):
+    vals = np.array(
+        [-0.10020513, -0.01518408, 0.00409132, -0.03173554, -0.03864283,
+        -0.34812672, -0.01761114, 0.59418421, -2.12299696, 1.19193344]
+    )
+    max_ampl = 0.2313
+    def _inner_func(ts):
+        ts = np.atleast_1d(ts)
+        x_init = ts/tau_p - mu
+        x_init = x_init * (1 - np.abs(0.5 - mu))
+        
+        scale = 22
+        x = x_init * scale
+        x = x + vals[0]*(0.05*x)**2 + vals[1]*(0.05*x)**4
+        ampls = np.sinc(x)
+        for i, ampl in enumerate(vals[2:]):
+            ampls += np.sinc(x) * ampl * np.cos(np.pi*x/(1+0.6*i))
+        ampls /= max_ampl
+        #  ampls[abs(x_init) >= 0.5] = 0 # cut the sholders 
         phases = np.full(ampls.shape, 0, dtype=np.float64)
         phases[ampls < 0] = np.pi
         phases += phase

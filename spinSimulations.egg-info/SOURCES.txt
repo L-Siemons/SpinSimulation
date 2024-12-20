@@ -1,5 +1,7 @@
 setup.py
 spinSimulations/__init__.py
+spinSimulations/plotter.py
+spinSimulations/shapes.py
 spinSimulations/solver_H.py
 spinSimulations/solver_L.py
 spinSimulations/spin.py
