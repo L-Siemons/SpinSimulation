@@ -136,6 +136,7 @@ def scale_90_to_gauss(
 def sinc(tau_p, n:int=3, mu=0.5):
     # mu = tau_p * mu
     def _inner_func(ts):
+        ts = np.atleast_1d(ts)
         return np.sinc(2 * n * (ts / tau_p - mu))
     return _inner_func
 
@@ -160,7 +161,7 @@ def sinc_pp(tau_p, phase=0, mu=0.5, null=5, window=False):
     
     return _inner_func
 
-def sinc_pp_90(tau_p, phase=0):
+def sinc_pp_90(tau_p, phase=0, stretch=2):
     max_ampl = 0.5477225575051661
     def _inner_func(ts):
         ts = np.atleast_1d(ts)
@@ -168,7 +169,7 @@ def sinc_pp_90(tau_p, phase=0):
         x_init = x_init * 0.4
         x = x_init * 10
         mask = (np.abs(x) <= 1)  # Speed up the central peak for small x
-        x = np.where(mask, np.sign(x) * (2 * np.abs(x) - 1), x)
+        x = np.where(mask, np.sign(x) * (stretch * np.abs(x) - 1), x)
         ampls = np.sinc(x)*np.sqrt(.3+x**2+x**4)*np.exp(-(x/2.3)**2) / max_ampl
         mask = (x == 0)
         ampls = np.where(mask, 0, ampls)
