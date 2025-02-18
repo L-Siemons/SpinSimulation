@@ -11,11 +11,16 @@ def traj_prop_h(
         times, 
         traj_ops,
         system=None,
+        return_rho=False
     ):
     if isinstance(ham, types.FunctionType):
-        return _traj_prop_time_dependent(rho, ham, times, traj_ops,system=system)
+        return _traj_prop_time_dependent(
+            rho, ham, times, traj_ops, system=system, return_rho=return_rho
+        )
     else: 
-        return _traj_prop_time_independent(rho, ham, times, traj_ops,system=system)
+        return _traj_prop_time_independent(
+            rho, ham, times, traj_ops, system=system, return_rho=return_rho
+        )
 
 def _set_ops(op, system=None):
     # matmul, elem_mul, kron, expm
@@ -58,6 +63,7 @@ def _traj_prop_time_dependent(
         times=np.array([]), 
         traj_ops=[],
         system=None,
+        return_rho=False
     ):
     
     matmul, multiply, _ , expm = _set_ops(rho, system=system)
@@ -78,6 +84,9 @@ def _traj_prop_time_dependent(
             )
         for traj_op, ampl in zip(traj_ops, ampls):
             ampl[idx] = amplitude(traj_op, rho, multiply)
+    if return_rho:
+        return ampls, rho
+        
     return ampls
 
 def _traj_prop_time_independent(
@@ -86,6 +95,7 @@ def _traj_prop_time_independent(
         times=np.array([]), 
         traj_ops=[],
         system=None,
+        return_rho=False
     ):
     
     matmul, multiply, _ , expm = _set_ops(rho, system=system)
@@ -108,6 +118,8 @@ def _traj_prop_time_independent(
             )
         for traj_op, ampl in zip(traj_ops, ampls):
             ampl[idx] = amplitude(traj_op, rho, multiply)
+    if return_rho:
+        return ampls, rho
     return ampls
 
 def prop_uni(op, prop):

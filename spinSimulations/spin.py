@@ -134,6 +134,65 @@ class System:
             
         self.ppms = ppms
 
+    # TODO: rewrite using Collections
+    def get_product_ops(self):
+        res = [np.eye(self.get_spin_dim())]
+        labels = ['']
+        for idx, nuc in enumerate(self.nuclei_list):
+            res_temp = []
+            labels_temp = []
+            for op_new, label_new in zip(
+                self.single_spin_product_ops(idx), 
+                [f'{idx}x', f'{idx}y', f'{idx}z']
+            ):
+                for op_current, label_current in zip(res, labels):
+                    res_temp.append(self.matmul(op_current, op_new))
+                    labels_temp.append(label_current + label_new)
+                    
+            res.extend(res_temp)
+            labels.extend(labels_temp)
+        labels[0] = 'e'
+        return labels, res
+            
+
+    def single_spin_product_ops(self, idx):
+        res = []
+        for label in ['x', 'y', 'z']:
+            res.append(self.op(idx, label=label))
+        return res
+
+    # TODO: right now everything is done using permutation operator
+    # Which is kind of stupid
+    def get_STZ_ops(self):
+        assert self.n_spins == 3,'Implemented only for 3 spins'
+        
+        st_labels = [
+            'T+a', 'T-a', 'T0a', 'Sa',
+            'T+b', 'T-b', 'T0b', 'Sb',
+        ]
+        
+        q = 1 / np.sqrt(2)
+        states = np.array([
+            [1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, q, q, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, q, q],
+            [0, 0, q, -q,0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, q,-q],
+            [0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+        ])
+        
+        ops = []
+        op_labels = []
+        for idx_1, label_1 in enumerate(st_labels):
+            for idx_2, label_2 in enumerate(st_labels):
+                ops.append(
+                    np.outer(states[:, idx_1], states[:, idx_2])
+                )
+                op_labels.append(label_1 + '><' + label_2)
+        return op_labels, ops
+
     # TODO: maybe untie build_ham_lab and build_ham_rf
     def build_ham_lab(self, field=None, ppms=None, Js=None, Hz=False, ZULF=False):
         if field is None:
