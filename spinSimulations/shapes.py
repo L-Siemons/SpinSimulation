@@ -140,14 +140,46 @@ def sinc(tau_p, n:int=3, mu=0.5):
         return np.sinc(2 * n * (ts / tau_p - mu))
     return _inner_func
 
-def sinc_pp(tau_p, phase=0, mu=0.5, null=5, window=False):
-    max_ampl = 0.5477225575051661
+def _sinc_func(x, version='1'):
+    # v1 max_ampl : 0.5477225575051661
+    # v2 max_ampl : 0.5385164807134504
+    # v3 max_ampl : 0.4510261145426295
+    if version == '1':
+        return np.sinc(x)*np.sqrt(.3+x**2+x**4)*np.exp(-(x/2.3)**2)
+    elif version == '2':
+        return np.sinc(x)*np.sqrt(.29+ 1.08*x**2 + 1.11*x**4)*np.exp(-(x/2.15)**2)
+    elif version == '3':
+        return np.sinc(x)*np.sqrt(.17+ 1.12*x**2 + 1.34*x**4)*np.exp(-(x/2.03)**2)
+    else:
+        raise NotImplementedError(
+            f'Only version 1, 2, 3 are currently implemented, yours is {version}'
+        )
+        
+def _gauss_func(x, version='1'):
+    # v1 max_ampl : 1
+    if version == '1':
+        return (
+            np.exp(-x**2)-0.35*(np.exp(-(x-3)**2)+np.exp(-(x+3)**2))
+            +0.22*(np.exp(-(x-3.8)**2)+np.exp(-(x+3.8)**2))
+        )
+    else:
+        raise NotImplementedError(
+            f'Only version 1, 2, 3 are currently implemented, yours is {version}'
+        )
+
+def sinc_pp(tau_p, phase=0, mu=0.5, null=5, window=False, version='1', max_ampl=None):
+    ampl_func = lambda val : _sinc_func(val, version=version)
+    if max_ampl is None:
+        if version in ['1', '2']:
+            max_ampl = ampl_func(0)
+        else:
+            max_ampl = 0.4510261145426295
     def _inner_func(ts):
         ts = np.atleast_1d(ts)
         x_init = ts/tau_p - mu
         x_init = x_init * (1 - np.abs(0.5 - mu))
         x = x_init * 2 * null
-        ampls = np.sinc(x)*np.sqrt(.3+x**2+x**4)*np.exp(-(x/2.3)**2) / max_ampl
+        ampls = ampl_func(x) / max_ampl
         # ampls[abs(x_init) >= 0.5] = 0 # cut the sholders 
         if window:
             # It is hunning window
@@ -161,16 +193,23 @@ def sinc_pp(tau_p, phase=0, mu=0.5, null=5, window=False):
     
     return _inner_func
 
-def sinc_pp_90(tau_p, phase=0, stretch=2):
-    max_ampl = 0.5477225575051661
+def sinc_pp_90(tau_p, phase=0, stretch=2, version='1', max_ampl=None, reversed=False):
+    ampl_func = lambda val : _sinc_func(val, version=version)
+    if max_ampl is None:
+        if version in ['1', '2']:
+            max_ampl = ampl_func(0)
+        else:
+            max_ampl = 0.4510261145426295
     def _inner_func(ts):
         ts = np.atleast_1d(ts)
+        if reversed:
+            ts = tau_p - ts
         x_init = ts/tau_p
-        x_init = x_init * 0.4
+        x_init = x_init * 0.5   # 0.5 gives one more lope
         x = x_init * 10
         mask = (np.abs(x) <= 1)  # Speed up the central peak for small x
         x = np.where(mask, np.sign(x) * (stretch * np.abs(x) - 1), x)
-        ampls = np.sinc(x)*np.sqrt(.3+x**2+x**4)*np.exp(-(x/2.3)**2) / max_ampl
+        ampls = ampl_func(x) / max_ampl
         mask = (x == 0)
         ampls = np.where(mask, 0, ampls)
         phases = np.full(ampls.shape, 0, dtype=np.float64)
@@ -182,25 +221,17 @@ def sinc_pp_90(tau_p, phase=0, stretch=2):
     
     return _inner_func
 
-def sinc_pp_2(tau_p, phase=0, mu=0.5):
-    vals = np.array(
-        [-0.10020513, -0.01518408, 0.00409132, -0.03173554, -0.03864283,
-        -0.34812672, -0.01761114, 0.59418421, -2.12299696, 1.19193344]
-    )
-    max_ampl = 0.2313
+
+def gauss_pp(tau_p, phase=0, mu=0.5, version='1', max_ampl=None):
+    ampl_func = lambda val : _gauss_func(val, version=version)
+    if max_ampl is None:
+        max_ampl = ampl_func(0)
     def _inner_func(ts):
         ts = np.atleast_1d(ts)
         x_init = ts/tau_p - mu
         x_init = x_init * (1 - np.abs(0.5 - mu))
-        
-        scale = 22
-        x = x_init * scale
-        x = x + vals[0]*(0.05*x)**2 + vals[1]*(0.05*x)**4
-        ampls = np.sinc(x)
-        for i, ampl in enumerate(vals[2:]):
-            ampls += np.sinc(x) * ampl * np.cos(np.pi*x/(1+0.6*i))
-        ampls /= max_ampl
-        #  ampls[abs(x_init) >= 0.5] = 0 # cut the sholders 
+        x = x_init * 12 # stretch that guarantees that x defines is between 0 and 1
+        ampls = ampl_func(x) / max_ampl
         phases = np.full(ampls.shape, 0, dtype=np.float64)
         phases[ampls < 0] = np.pi
         phases += phase
@@ -209,6 +240,59 @@ def sinc_pp_2(tau_p, phase=0, mu=0.5):
         return (ampls[0], phases[0]) if ampls.size == 1 else (ampls, phases)
     
     return _inner_func
+
+def gauss_pp_90(tau_p, phase=0, stretch=2, version='1', max_ampl=None, reversed=False):
+    ampl_func = lambda val : _gauss_func(val, version=version)
+    if max_ampl is None:
+        max_ampl = ampl_func(0)
+    def _inner_func(ts):
+        ts = np.atleast_1d(ts)
+        if reversed:
+            ts = tau_p - ts
+        x_init = ts/tau_p
+        x = x_init * 6 # the shape is define between -6, 6
+        first_zero_coord = 1.7
+        mask = (np.abs(x) <= first_zero_coord)  # Speed up the central peak for small x
+        x = np.where(mask, np.sign(x) * (stretch * np.abs(x) - first_zero_coord), x)
+        ampls = ampl_func(x) / max_ampl
+        mask = (x == 0)
+        ampls = np.where(mask, 0, ampls)
+        phases = np.full(ampls.shape, 0, dtype=np.float64)
+        phases[ampls < 0] = np.pi
+        phases += phase
+        ampls = np.abs(ampls)
+        # If the input was a scalar, return a scalar output
+        return (ampls[0], phases[0]) if ampls.size == 1 else (ampls, phases)
+    
+    return _inner_func
+
+# def sinc_pp_2(tau_p, phase=0, mu=0.5):
+#     vals = np.array(
+#         [-0.10020513, -0.01518408, 0.00409132, -0.03173554, -0.03864283,
+#         -0.34812672, -0.01761114, 0.59418421, -2.12299696, 1.19193344]
+#     )
+#     max_ampl = 0.2313
+#     def _inner_func(ts):
+#         ts = np.atleast_1d(ts)
+#         x_init = ts/tau_p - mu
+#         x_init = x_init * (1 - np.abs(0.5 - mu))
+        
+#         scale = 22
+#         x = x_init * scale
+#         x = x + vals[0]*(0.05*x)**2 + vals[1]*(0.05*x)**4
+#         ampls = np.sinc(x)
+#         for i, ampl in enumerate(vals[2:]):
+#             ampls += np.sinc(x) * ampl * np.cos(np.pi*x/(1+0.6*i))
+#         ampls /= max_ampl
+#         #  ampls[abs(x_init) >= 0.5] = 0 # cut the sholders 
+#         phases = np.full(ampls.shape, 0, dtype=np.float64)
+#         phases[ampls < 0] = np.pi
+#         phases += phase
+#         ampls = np.abs(ampls)
+#         # If the input was a scalar, return a scalar output
+#         return (ampls[0], phases[0]) if ampls.size == 1 else (ampls, phases)
+#     
+#     return _inner_func
 
 # === G3, G4, Q3, Q5 === #
 def ampl_pulse(tau_p, name='G3', phase=0., window=False):
