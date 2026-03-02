@@ -1,5 +1,7 @@
 ### HERE SOLVERS FOR HAMILTONIAN FORMALISM WILL BE
 import numpy as np
+import scipy as sp
+import scipy.sparse as sps
 import functools
 import types
 
@@ -9,11 +11,51 @@ def traj_prop_h(
         times, 
         traj_ops,
         system=None,
+        return_rho=False
     ):
     if isinstance(ham, types.FunctionType):
-        return _traj_prop_time_dependent(rho, ham, times, traj_ops,system=system)
+        return _traj_prop_time_dependent(
+            rho, ham, times, traj_ops, system=system, return_rho=return_rho
+        )
     else: 
-        return _traj_prop_time_independent(rho, ham, times, traj_ops,system=system)
+        return _traj_prop_time_independent(
+            rho, ham, times, traj_ops, system=system, return_rho=return_rho
+        )
+
+def _set_ops(op, system=None):
+    # matmul, elem_mul, kron, expm
+    if system:
+        return system.matmul, system.multiply, system.kron, system.expm
+    
+    if sps.issparse(op):
+        return sparse_dot, sparse_multiply, sps.kron, sps.linalg.expm
+    else:
+        return np.matmul, np.multiply, np.kron, sp.linalg.expm
+        
+        
+
+def prop_h(op, generator, time=None, system=None, reverse=False):
+    
+    matmul, _, _, expm = _set_ops(op, system=system)
+    
+    if time:
+        prop = expm(-1j * generator * time)
+    else:
+        prop = expm(-1j * generator)
+        
+    if reverse:
+        return matmul(
+                prop.conj().T, matmul(op, prop)
+            )
+        
+    return matmul(
+            prop, matmul(op, prop.conj().T)
+        )
+         
+        
+def com_h(a, b, system=None):
+    matmul, *_ = _set_ops(a, system=system)
+    return matmul(a, b) - matmul(b, a)
 
 def _traj_prop_time_dependent(
         rho=np.array([[]]), 
@@ -21,7 +63,10 @@ def _traj_prop_time_dependent(
         times=np.array([]), 
         traj_ops=[],
         system=None,
+        return_rho=False
     ):
+    
+    matmul, multiply, _ , expm = _set_ops(rho, system=system)
     
     ampls = [np.zeros_like(times, dtype=system.dtype) for _ in traj_ops]
     
@@ -30,15 +75,18 @@ def _traj_prop_time_dependent(
 
     # propogate
     for idx, time in enumerate(times):
-        prop = system.expm(-1j * ham(time) * dt)
+        prop = expm(-1j * ham(time) * dt)
         prop_dag = prop.conj().transpose()
         if idx != 0:
             rho = functools.reduce(
-                system.matmul,
+                matmul,
                 [prop, rho, prop_dag]
             )
         for traj_op, ampl in zip(traj_ops, ampls):
-            ampl[idx] = amplitude(traj_op, rho)
+            ampl[idx] = amplitude(traj_op, rho, multiply)
+    if return_rho:
+        return ampls, rho
+        
     return ampls
 
 def _traj_prop_time_independent(
@@ -47,7 +95,10 @@ def _traj_prop_time_independent(
         times=np.array([]), 
         traj_ops=[],
         system=None,
+        return_rho=False
     ):
+    
+    matmul, multiply, _ , expm = _set_ops(rho, system=system)
     
     ampls = [np.zeros_like(times, dtype=system.dtype) for _ in traj_ops]
     
@@ -55,21 +106,32 @@ def _traj_prop_time_independent(
     dt = times[1] - times[0]
     
     # define propogators
-    prop = system.expm(-1j * ham * dt)
+    prop = expm(-1j * ham * dt)
     prop_dag = prop.conj().transpose()
     
     # propogate
     for idx, _ in enumerate(times):
         if idx != 0:
             rho = functools.reduce(
-                system.matmul,
+                matmul,
                 [prop, rho, prop_dag]
             )
         for traj_op, ampl in zip(traj_ops, ampls):
-            ampl[idx] = amplitude(traj_op, rho)
+            ampl[idx] = amplitude(traj_op, rho, multiply)
+    if return_rho:
+        return ampls, rho
     return ampls
 
-def amplitude(op_to, op_from):
+def prop_uni(op, prop):
+    return prop @ op @ prop.conj().T
+
+def calc_uni(op, duration=None, spin_system=None):
+    _, _, _, expm = _set_ops(op, spin_system)
+    if duration is None:
+        return expm(-1j * op)
+    return expm(-1j * op * duration)
+
+def amplitude(op_to, op_from, multiply=None):
     """Calculate amplitude of operator_to in operator_from
 
     Args:
@@ -79,9 +141,9 @@ def amplitude(op_to, op_from):
     Returns:
         _type_: _description_
     """    
-    return norm_frob(op_to, op_from) / norm_frob(op_to)
+    return norm_frob(op_to, op_from, multiply=multiply) / norm_frob(op_to, multiply=multiply)
 
-def norm_frob(op_first, op_second=None):
+def norm_frob(op_first, op_second=None, multiply=None):
     """Calculate frobenious norm (squared)
 
     Args:
@@ -90,8 +152,31 @@ def norm_frob(op_first, op_second=None):
 
     Returns:
         _type_: _description_
-    """    
-    if op_second is None:
-            return (op_first.conj() * op_first).sum()
+    """
+    if multiply is None:
+        _, multiply, _, _, = _set_ops(op_first)
         
-    return (op_first.conj() * op_second).sum()
+    if op_second is None:
+            return (multiply(op_first.conj(), op_first)).sum()
+        
+    return (multiply(op_first.conj(), op_second)).sum()
+
+
+# TODO: it is a replica from a spin file, do something with it
+def sparse_dot(a, b):
+    """This is a helper function to provide two arguments multiplication function for sparse matrices
+
+    Parameters
+    ----------
+    a : scipy sparse matrix
+    b : scipy sparse matrix
+
+    Returns
+    -------
+    scipy sparse matrix
+    """
+    return a.dot(b)
+
+# TODO: the same as sparse dot
+def sparse_multiply(a, b):
+    return a.multiply(b)

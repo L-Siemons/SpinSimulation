@@ -57,7 +57,8 @@ class System:
 
     """
 
-    def __init__(self, n_spins, nuclei_list=None, dtype=np.cdouble, is_sparse=True):
+    def __init__(self, n_spins, nuclei_list=None, dtype=np.cdouble, 
+                is_sparse=True, Js=None, ppms=None, field=None):
         """
         Initial set up
 
@@ -73,10 +74,11 @@ class System:
         """
         self.n_spins = n_spins
         
-        if nuclei_list is None:
-            self.nuclei_list = ["1H"] * n_spins
-        else:
-            self.nuclei_list = nuclei_list
+        # set spin system params
+        self.set_nuclei_list(nuclei_list)
+        self.set_Js(Js)
+        self.set_ppms(ppms)
+        self.field = field
         
         self.small_identity = np.identity(2, dtype=np.cdouble)
         self.operators = {}
@@ -88,6 +90,194 @@ class System:
         self.lamour_freq_hz = None
         self.dtype = dtype
         self.set_sparse(is_sparse)
+        
+    def set_nuclei_list(self, nuclei_list):
+        if nuclei_list is None:
+            self.nuclei_list = ["1H"] * self.n_spins
+        else:
+            # check if nuclei list is compatable with the number of spins
+            if len(nuclei_list) > self.n_spins:
+                raise Exception(
+                    'Nuclei list should be '
+                    'the same size as n_spins'
+                )
+            self.nuclei_list = nuclei_list
+
+    def set_Js(self, Js):
+        
+        if Js is None:
+            self.Js = None
+            return
+        
+        if Js.shape[0] != Js.shape[1]:
+            raise Exception("J-coupling matrix must be square")
+        
+        if Js.shape[0] != self.get_n_spins():
+            raise Exception(
+                    "J-coupling matrix shape is incopatable " 
+                    "with the number of spins"
+                )
+            
+        self.Js = Js
+
+    def set_ppms(self, ppms):
+        # THESE ARE SPIN PPM, not transition ppm
+        if ppms is None:
+            self.ppms = None
+            return
+            
+        if len(ppms) != self.get_n_spins():
+            raise Exception(
+                    "The amount of ppms should be the same "
+                    "As the number of spins"
+                )
+            
+        self.ppms = ppms
+
+    # TODO: rewrite using Collections
+    def get_product_ops(self):
+        res = [np.eye(self.get_spin_dim())]
+        labels = ['']
+        for idx, nuc in enumerate(self.nuclei_list):
+            res_temp = []
+            labels_temp = []
+            for op_new, label_new in zip(
+                self.single_spin_product_ops(idx), 
+                [f'{idx}x', f'{idx}y', f'{idx}z']
+            ):
+                for op_current, label_current in zip(res, labels):
+                    res_temp.append(self.matmul(op_current, op_new))
+                    labels_temp.append(label_current + label_new)
+                    
+            res.extend(res_temp)
+            labels.extend(labels_temp)
+        labels[0] = 'e'
+        return labels, res
+            
+
+    def single_spin_product_ops(self, idx):
+        res = []
+        for label in ['x', 'y', 'z']:
+            res.append(self.op(idx, label=label))
+        return res
+
+    # TODO: right now everything is done using permutation operator
+    # Which is kind of stupid
+    def get_STZ_ops(self):
+        assert self.n_spins == 3,'Implemented only for 3 spins'
+        
+        st_labels = [
+            'T+a', 'T-a', 'T0a', 'Sa',
+            'T+b', 'T-b', 'T0b', 'Sb',
+        ]
+        
+        q = 1 / np.sqrt(2)
+        states = np.array([
+            [1, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 1, 0, 0, 0],
+            [0, 0, q, q, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, q, q],
+            [0, 0, q, -q,0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, q,-q],
+            [0, 1, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 1, 0, 0],
+        ])
+        
+        ops = []
+        op_labels = []
+        for idx_1, label_1 in enumerate(st_labels):
+            for idx_2, label_2 in enumerate(st_labels):
+                ops.append(
+                    np.outer(states[:, idx_1], states[:, idx_2])
+                )
+                op_labels.append(label_1 + '><' + label_2)
+        return op_labels, ops
+
+    # TODO: maybe untie build_ham_lab and build_ham_rf
+    def build_ham_lab(self, field=None, ppms=None, Js=None, Hz=False, ZULF=False):
+        if field is None:
+            if self.field is None:
+                Exception('Field is not provided')
+            field = self.field
+        
+        if ppms is not None:
+            self.set_ppms(ppms)
+        
+        if Js is not None:
+            self.set_Js(Js)
+            
+        nuclei_list = self.nuclei_list
+        n_spins = self.get_n_spins()
+        op = self.op
+        
+        ham = 0.
+        for idx, ppm in enumerate(self.ppms):
+            nuc = nuclei_list[idx]
+            ham = ham + (
+                (1 + ppm) * field * sd.gamma(nuc) * op(idx, 'z')
+            )
+        
+        
+        for idx_1 in range(n_spins):
+            for idx_2 in range(idx_1 + 1 , n_spins):
+                secular = (
+                    False if nuclei_list[idx_1] == nuclei_list[idx_2] or ZULF
+                    else True
+                )
+                ham = ham + 2 * np.pi * self.Js[idx_1, idx_2] * self.scalar(idx_1, idx_2, secular=secular)
+        
+        if Hz:
+            ham = ham / 2 / np.pi
+                
+        return ham
+
+    def get_ppms(self):
+        return self.ppms
+    
+    def get_Js(self):
+        return self.Js
+
+    def build_ham_rf(
+            self, field, nucs_on_res=[], 
+            ppms=None, Js=None, Hz=False):
+        
+        if ppms is not None:
+            self.set_ppms(ppms)
+        
+        if Js is not None:
+            self.set_Js(Js)
+            
+        nuclei_list = self.nuclei_list
+        n_spins = self.get_n_spins()
+        ppms = self.get_ppms()
+        op = self.op
+        
+        ham = 0.
+        for idx, ppm in enumerate(ppms):
+            nuc = nuclei_list[idx]
+            if nuc in nucs_on_res:
+                coeff = ppm
+            else:
+                coeff = 1 + ppm
+                
+            ham = ham + (
+                coeff * field * sd.gamma(nuc) * op(idx, 'z')
+            )
+            
+        
+        for idx_1 in range(n_spins):
+            for idx_2 in range(idx_1 + 1 , n_spins):
+                secular = (
+                    False if nuclei_list[idx_1] == nuclei_list[idx_2] 
+                    else True
+                )
+                ham += 2 * np.pi * self.Js[idx_1, idx_2] \
+                    * self.scalar(idx_1, idx_2, secular=secular)
+        
+        if Hz:
+            ham = ham / 2 / np.pi
+                
+        return ham
 
     def set_sparse(self, is_sparse=True):
         self.is_sparse = is_sparse
@@ -97,11 +287,13 @@ class System:
         if self.is_sparse:
             self.kron = sps.kron
             self.matmul = sparse_dot
+            self.multiply = sparse_multiply
             self.expm = sps.linalg.expm
             self.eye = sps.eye
         else:
             self.kron = np.kron
             self.matmul = np.matmul
+            self.multiply = np.multiply
             self.expm = sp.linalg.expm
             self.eye = np.eye
             
@@ -137,7 +329,7 @@ class System:
 
     def _ladder_values(self, s):
         """
-        Return all values on \pm 1 diagonal of a ladder operators
+        Return all values on pm 1 diagonal of a ladder operators
         Helper function to build the ladder operators
 
         Parameters
@@ -149,7 +341,7 @@ class System:
         Returns
         -------
         numpy.ndarray
-            Return all values on \pm 1 diagonal of a ladder operators
+            Return all values on pm 1 diagonal of a ladder operators
         """
         n_proj = int(2*s + 1)
         iter_len = n_proj - 1
@@ -205,9 +397,10 @@ class System:
 
     def op_full(self, name):
         """
-        Get any operator. These follow the format N1aaN2bb where N1 and N2 are the atom inxdexes and
-        xx and bb are the names of the operator. For example the name for the I1zI2z operator
-        would be '0z1z' and I1zI2x would be '0z1x'.
+        Get any operator. These follow the format N1aaN2bb where N1 and N2 are 
+        the atom inxdexes and xx and bb are the names of the operator. 
+        For example the name for the I1zI2z operator would be '0z1z' and I1zI2x 
+        would be '0z1x'.
 
         Parameters
         ----------
@@ -235,7 +428,12 @@ class System:
             else:
                 identity_size = int(2 * spin + 1)
                 res = self.kron(res, self.eye(identity_size))
-                    
+        
+        # TODO: allow the return format to be more flexible
+        # For now csc  format is returned as it is supposed to be faster
+        if self.is_sparse:
+            return sps.csc_matrix(res)
+        
         return res
 
     def _index_check(self, idx):
@@ -280,14 +478,30 @@ class System:
 
         return res_op
 
-    def op(self, idx, label="z"):
+    def get_idx(self, idx: str):
+        """Get the index of a spin by its name"""
+        idx_res = []
+        for i, nuclei in enumerate(self.nuclei_list):
+            if nuclei == idx:
+                idx_res.append(i)
+                
+        if len(idx_res) == 0:
+            raise Exception(f"Spin with name {idx} not found")        
+
+        if len(idx_res) == 1:
+            return idx_res[0]
+
+        return idx_res
+
+    def op(self, idx, label="z", phi=None):
         """Return the operator for a spin system
 
         Parameters
         ----------
         idx : int, list
-            If the spin indx is a list it will sum all the operators with the name 'label'
-            over the spins provided in the list. If indx is an it it returns system._op()
+            If the spin indx is a list it will sum all the operators 
+            with the name 'label' over the spins provided in the list. 
+            If idx is an it it returns system._op()
 
         label :str
             operator type, "x", "y", "z", "p", "m".
@@ -298,16 +512,39 @@ class System:
             spin operator
         """
         
+        if phi is not None:
+            op_x = self.op(idx, label="x")
+            op_y = self.op(idx, label="y")
+        
+            phi = np.asarray(phi)
+            if phi.ndim == 0:
+                return (
+                    np.cos(phi) * op_x + np.sin(phi) * op_y
+                )
+            elif phi.ndim == 1:
+                return (
+                    np.cos(phi[:, None, None]) * op_x[None, :, :] 
+                    + np.sin(phi[:, None, None]) * op_y[None, :, :]
+                )
+            else:
+                raise ValueError('Phi can have 0 or 1 dims')
+        
         # List of idx brunch
         if isinstance(idx, list):
             res = 0
             for id in idx:
                 res += self._op(id, label=label)
-            return res
 
         # just makes the logic more explicit.
         else:
-            return self._op(idx=idx, label=label)
+            res = self._op(idx=idx, label=label)
+
+        # TODO: allow the return format to be more flexible
+        # For now csc  format is returned as it is supposed to be faster
+        if self.is_sparse:
+            return sps.csc_matrix(res)
+       
+        return res
         
     def scalar(self, i: int, j: int, secular=False):
         """
@@ -327,6 +564,7 @@ class System:
         numpy.ndarray
             The operator we asked for
         """
+        
         self._index_check(i)
         self._index_check(j)
 
@@ -344,7 +582,7 @@ class System:
             res += self.matmul(self.op(i, coord), self.op(j, coord))
         return res
 
-    def singlet(self, i, j):
+    def singlet(self, i, j, normalized=True):
         """
         operator definition is taken from here
         http://dx.doi.org/10.1016/j.jmr.2015.08.021
@@ -361,8 +599,18 @@ class System:
         -------
         numpy.ndarray
             The operator we asked for
-        """       
-        return self.scalar(i, j, secular=False) * 2**(2 - self.get_n_spins())
+        """      
+        if normalized:
+            scale = 2**(2 - self.get_n_spins())
+        else:
+            scale = 1
+        return self.scalar(i, j, secular=False) * scale
+    
+    def ssinglet(self, idx_list, normalized=False):
+        res = 1
+        for idx in idx_list:
+            res *= self.singlet(idx[0], idx[1], normalized=normalized)
+        return res
     
     def pol_level(self, i, label="z"):
         """
@@ -403,7 +651,7 @@ class System:
         atom_id : int
             The atom id
         ppm : float
-            chemical shift in ppm
+            chemical shift in ppms
         absolute : bool
             if True return the frequency plus the lamour frequency
         freq : str, optional
@@ -691,3 +939,6 @@ def sparse_dot(a, b):
     scipy sparse matrix
     """
     return a.dot(b)
+
+def sparse_multiply(a, b):
+    return a.multiply(b)
